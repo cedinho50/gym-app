@@ -5,12 +5,19 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 
 async function seedDatabase() {
-  const existing = await storage.getExercises();
-  if (existing.length === 0) {
-    await storage.createExercise({ name: "Bizeps Curls", category: "Arme", weight: "8 kg", isCompleted: false, increaseNextTime: false });
-    await storage.createExercise({ name: "Trizepsdrücken", category: "Arme", weight: "28.25 kg", isCompleted: false, increaseNextTime: true });
-    await storage.createExercise({ name: "Leg Curl", category: "Beine", weight: "67.5 kg", isCompleted: false, increaseNextTime: false });
-    await storage.createExercise({ name: "Beinpresse", category: "Beine", weight: "75 kg", isCompleted: false, increaseNextTime: false });
+  const existingSplits = await storage.getSplits();
+  if (existingSplits.length === 0) {
+    const split1 = await storage.createSplit({ name: "Arme/Brust", order: 1 });
+    const split2 = await storage.createSplit({ name: "Beine/Bauch", order: 2 });
+    const split3 = await storage.createSplit({ name: "Rücken/Schultern", order: 3 });
+
+    await storage.createExercise({ name: "Bizeps Curls", splitId: split1.id, weight: "8 kg", isCompleted: false, increaseNextTime: false });
+    await storage.createExercise({ name: "Bankdrücken", splitId: split1.id, weight: "40 kg", isCompleted: false, increaseNextTime: true });
+    
+    await storage.createExercise({ name: "Leg Curl", splitId: split2.id, weight: "67.5 kg", isCompleted: false, increaseNextTime: false });
+    await storage.createExercise({ name: "Beinpresse", splitId: split2.id, weight: "75 kg", isCompleted: false, increaseNextTime: false });
+
+    await storage.createExercise({ name: "Latzug", splitId: split3.id, weight: "45 kg", isCompleted: false, increaseNextTime: false });
   }
 }
 
@@ -19,56 +26,52 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Seed initial data
   await seedDatabase();
 
+  // Splits
+  app.get(api.splits.list.path, async (req, res) => {
+    res.json(await storage.getSplits());
+  });
+  app.post(api.splits.create.path, async (req, res) => {
+    res.status(201).json(await storage.createSplit(api.splits.create.input.parse(req.body)));
+  });
+  app.patch(api.splits.update.path, async (req, res) => {
+    const item = await storage.updateSplit(Number(req.params.id), api.splits.update.input.parse(req.body));
+    if (!item) return res.status(404).json({ message: "Not found" });
+    res.json(item);
+  });
+  app.delete(api.splits.delete.path, async (req, res) => {
+    await storage.deleteSplit(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  // Exercises
   app.get(api.exercises.list.path, async (req, res) => {
-    const items = await storage.getExercises();
-    res.json(items);
+    const splitId = req.query.splitId ? Number(req.query.splitId) : undefined;
+    res.json(await storage.getExercises(splitId));
   });
-
   app.post(api.exercises.create.path, async (req, res) => {
-    try {
-      const input = api.exercises.create.input.parse(req.body);
-      const item = await storage.createExercise(input);
-      res.status(201).json(item);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      throw err;
-    }
+    res.status(201).json(await storage.createExercise(api.exercises.create.input.parse(req.body)));
   });
-
   app.patch(api.exercises.update.path, async (req, res) => {
-    try {
-      const input = api.exercises.update.input.parse(req.body);
-      const item = await storage.updateExercise(Number(req.params.id), input);
-      if (!item) {
-        return res.status(404).json({ message: "Exercise not found" });
-      }
-      res.json(item);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      throw err;
-    }
+    const item = await storage.updateExercise(Number(req.params.id), api.exercises.update.input.parse(req.body));
+    if (!item) return res.status(404).json({ message: "Not found" });
+    res.json(item);
   });
-
   app.delete(api.exercises.delete.path, async (req, res) => {
     await storage.deleteExercise(Number(req.params.id));
     res.status(204).end();
   });
 
-  app.post(api.exercises.resetCompleted.path, async (req, res) => {
-    await storage.resetCompleted();
+  // History
+  app.get(api.history.list.list.path, async (req, res) => { // Fixed path structure if needed
+    res.json(await storage.getHistory());
+  });
+
+  // Finish Workout
+  app.post(api.workout.finish.path, async (req, res) => {
+    const { splitId } = api.workout.finish.input.parse(req.body);
+    await storage.finishWorkout(splitId);
     res.json({ success: true });
   });
 

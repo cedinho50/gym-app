@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { insertExerciseSchema, exercises } from "./schema";
+import { insertExerciseSchema, insertWorkoutSplitSchema, insertWorkoutHistorySchema, exercises, workoutSplits, workoutHistory } from "./schema";
 
 export const errorSchemas = {
   validation: z.object({
@@ -12,6 +12,38 @@ export const errorSchemas = {
 };
 
 export const api = {
+  splits: {
+    list: {
+      method: "GET" as const,
+      path: "/api/splits" as const,
+      responses: {
+        200: z.array(z.custom<typeof workoutSplits.$inferSelect>()),
+      },
+    },
+    create: {
+      method: "POST" as const,
+      path: "/api/splits" as const,
+      input: insertWorkoutSplitSchema,
+      responses: {
+        201: z.custom<typeof workoutSplits.$inferSelect>(),
+      },
+    },
+    update: {
+      method: "PATCH" as const,
+      path: "/api/splits/:id" as const,
+      input: insertWorkoutSplitSchema.partial(),
+      responses: {
+        200: z.custom<typeof workoutSplits.$inferSelect>(),
+      },
+    },
+    delete: {
+      method: "DELETE" as const,
+      path: "/api/splits/:id" as const,
+      responses: {
+        204: z.void(),
+      },
+    },
+  },
   exercises: {
     list: {
       method: "GET" as const,
@@ -26,7 +58,6 @@ export const api = {
       input: insertExerciseSchema,
       responses: {
         201: z.custom<typeof exercises.$inferSelect>(),
-        400: errorSchemas.validation,
       },
     },
     update: {
@@ -35,8 +66,6 @@ export const api = {
       input: insertExerciseSchema.partial(),
       responses: {
         200: z.custom<typeof exercises.$inferSelect>(),
-        400: errorSchemas.validation,
-        404: errorSchemas.notFound,
       },
     },
     delete: {
@@ -44,16 +73,35 @@ export const api = {
       path: "/api/exercises/:id" as const,
       responses: {
         204: z.void(),
-        404: errorSchemas.notFound,
       },
     },
-    resetCompleted: {
+  },
+  history: {
+    list: {
+      method: "GET" as const,
+      path: "/api/history" as const,
+      responses: {
+        200: z.array(z.custom<typeof workoutHistory.$inferSelect>()),
+      },
+    },
+    create: {
       method: "POST" as const,
-      path: "/api/exercises/reset" as const,
+      path: "/api/history" as const,
+      input: insertWorkoutHistorySchema,
+      responses: {
+        201: z.custom<typeof workoutHistory.$inferSelect>(),
+      },
+    },
+  },
+  workout: {
+    finish: {
+      method: "POST" as const,
+      path: "/api/workout/finish" as const,
+      input: z.object({ splitId: z.number() }),
       responses: {
         200: z.object({ success: z.boolean() }),
-      }
-    }
+      },
+    },
   },
 };
 
@@ -68,8 +116,3 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
   }
   return url;
 }
-
-export type ExerciseInput = z.infer<typeof api.exercises.create.input>;
-export type ExerciseUpdateInput = z.infer<typeof api.exercises.update.input>;
-export type ExerciseResponse = z.infer<typeof api.exercises.create.responses[201]>;
-export type ExercisesListResponse = z.infer<typeof api.exercises.list.responses[200]>;
