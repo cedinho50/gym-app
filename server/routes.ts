@@ -65,6 +65,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(204).end();
   });
 
+  // Reorder exercises within a split
+  app.post("/api/exercises/reorder", async (req, res) => {
+    const { splitId, orderedIds } = z.object({ splitId: z.number(), orderedIds: z.array(z.number()) }).parse(req.body);
+    await storage.reorderExercises(splitId, orderedIds);
+    res.json({ success: true });
+  });
+
   // Reset completed state for a split
   app.post("/api/exercises/reset", async (req, res) => {
     const { splitId } = z.object({ splitId: z.number() }).parse(req.body);

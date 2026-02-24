@@ -1,10 +1,10 @@
 import { db } from "./db";
-import { 
+import {
   exercises, workoutSplits, workoutHistory,
   type InsertExercise, type InsertWorkoutSplit, type InsertWorkoutHistory,
-  type Exercise, type WorkoutSplit, type WorkoutHistory 
+  type Exercise, type WorkoutSplit, type WorkoutHistory
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 export interface IStorage {
   getSplits(): Promise<WorkoutSplit[]>;
@@ -16,6 +16,7 @@ export interface IStorage {
   createExercise(exercise: InsertExercise): Promise<Exercise>;
   updateExercise(id: number, updates: Partial<InsertExercise>): Promise<Exercise | undefined>;
   deleteExercise(id: number): Promise<void>;
+  reorderExercises(splitId: number, orderedIds: number[]): Promise<void>;
 
   getHistory(): Promise<WorkoutHistory[]>;
   createHistory(history: InsertWorkoutHistory): Promise<WorkoutHistory>;
@@ -25,7 +26,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getSplits(): Promise<WorkoutSplit[]> {
-    return await db.select().from(workoutSplits).orderBy(workoutSplits.order);
+    return await db.select().from(workoutSplits).orderBy(asc(workoutSplits.order));
   }
   async createSplit(split: InsertWorkoutSplit): Promise<WorkoutSplit> {
     const [res] = await db.insert(workoutSplits).values(split).returning();
@@ -36,17 +37,23 @@ export class DatabaseStorage implements IStorage {
     return res;
   }
   async deleteSplit(id: number): Promise<void> {
+    await db.delete(exercises).where(eq(exercises.splitId, id));
     await db.delete(workoutSplits).where(eq(workoutSplits.id, id));
   }
 
   async getExercises(splitId?: number): Promise<Exercise[]> {
     if (splitId) {
-      return await db.select().from(exercises).where(eq(exercises.splitId, splitId));
+      return await db.select().from(exercises)
+        .where(eq(exercises.splitId, splitId))
+        .orderBy(asc(exercises.order));
     }
-    return await db.select().from(exercises);
+    return await db.select().from(exercises).orderBy(asc(exercises.order));
   }
   async createExercise(exercise: InsertExercise): Promise<Exercise> {
-    const [res] = await db.insert(exercises).values(exercise).returning();
+    // Assign next order value for the split
+    const existing = exercise.splitId ? await this.getExercises(exercise.splitId) : [];
+    const nextOrder = existing.length;
+    const [res] = await db.insert(exercises).values({ ...exercise, order: nextOrder }).returning();
     return res;
   }
   async updateExercise(id: number, updates: Partial<InsertExercise>): Promise<Exercise | undefined> {
@@ -55,6 +62,13 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteExercise(id: number): Promise<void> {
     await db.delete(exercises).where(eq(exercises.id, id));
+  }
+  async reorderExercises(splitId: number, orderedIds: number[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.update(exercises)
+        .set({ order: i })
+        .where(eq(exercises.id, orderedIds[i]));
+    }
   }
 
   async getHistory(): Promise<WorkoutHistory[]> {
@@ -67,11 +81,7 @@ export class DatabaseStorage implements IStorage {
 
   async finishWorkout(splitId: number): Promise<void> {
     const workoutExercises = await this.getExercises(splitId);
-    await this.createHistory({
-      splitId,
-      workoutData: JSON.stringify(workoutExercises)
-    });
-
+    await this.createHistory({ splitId, workoutData: JSON.stringify(workoutExercises) });
     for (const ex of workoutExercises) {
       await this.updateExercise(ex.id, { isCompleted: false });
     }

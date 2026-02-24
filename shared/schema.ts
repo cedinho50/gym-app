@@ -15,6 +15,7 @@ export const exercises = pgTable("exercises", {
   weight: text("weight").notNull().default(""),
   isCompleted: boolean("is_completed").notNull().default(false),
   increaseNextTime: boolean("increase_next_time").notNull().default(false),
+  order: integer("order").notNull().default(0),
 });
 
 export const workoutHistory = pgTable("workout_history", {

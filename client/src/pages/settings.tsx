@@ -1,13 +1,86 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, Check, X } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, Check, X, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useSplits, useCreateSplit, useUpdateSplit, useDeleteSplit } from "@/hooks/use-splits";
-import { useExercises, useCreateExercise, useUpdateExercise, useDeleteExercise } from "@/hooks/use-exercises";
+import { useExercises, useCreateExercise, useUpdateExercise, useDeleteExercise, useReorderExercises } from "@/hooks/use-exercises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExerciseForm } from "@/components/exercise-form";
 import type { WorkoutSplit, Exercise } from "@shared/schema";
+
+function SortableExerciseRow({
+  exercise,
+  onEdit,
+  onDelete,
+}: {
+  exercise: Exercise;
+  onEdit: (ex: Exercise) => void;
+  onDelete: (id: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: exercise.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 py-2.5 border-b border-gray-50 last:border-0 bg-white ${isDragging ? "shadow-lg rounded-xl" : ""}`}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="flex-shrink-0 text-gray-300 hover:text-gray-500 touch-none cursor-grab active:cursor-grabbing p-1"
+        aria-label="Ziehen zum Sortieren"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-800 truncate">{exercise.name}</p>
+        <p className="text-xs text-gray-400">{exercise.weight || "Kein Gewicht"}</p>
+      </div>
+
+      <button
+        onClick={() => onEdit(exercise)}
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => onDelete(exercise.id)}
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
 
 function SplitSection({ split }: { split: WorkoutSplit }) {
   const [open, setOpen] = useState(false);
@@ -22,6 +95,31 @@ function SplitSection({ split }: { split: WorkoutSplit }) {
   const createExercise = useCreateExercise();
   const updateExercise = useUpdateExercise();
   const deleteExercise = useDeleteExercise();
+  const reorderExercises = useReorderExercises();
+
+  const [localOrder, setLocalOrder] = useState<number[] | null>(null);
+  const orderedExercises = localOrder
+    ? localOrder.map((id) => exercises.find((e) => e.id === id)!).filter(Boolean)
+    : exercises;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = orderedExercises.findIndex((e) => e.id === active.id);
+    const newIndex = orderedExercises.findIndex((e) => e.id === over.id);
+    const newOrder = arrayMove(orderedExercises, oldIndex, newIndex).map((e) => e.id);
+
+    setLocalOrder(newOrder);
+    reorderExercises.mutate({ splitId: split.id, orderedIds: newOrder }, {
+      onSuccess: () => setLocalOrder(null),
+    });
+  };
 
   const handleSaveName = () => {
     if (nameValue.trim() && nameValue !== split.name) {
@@ -41,12 +139,18 @@ function SplitSection({ split }: { split: WorkoutSplit }) {
               onChange={(e) => setNameValue(e.target.value)}
               className="h-9 rounded-xl border-gray-200 bg-gray-50 text-sm font-semibold"
               autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") setEditingName(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveName();
+                if (e.key === "Escape") setEditingName(false);
+              }}
             />
             <button onClick={handleSaveName} className="text-emerald-500 hover:text-emerald-600 transition-colors">
               <Check className="w-5 h-5" />
             </button>
-            <button onClick={() => { setEditingName(false); setNameValue(split.name); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <button
+              onClick={() => { setEditingName(false); setNameValue(split.name); }}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -67,48 +171,40 @@ function SplitSection({ split }: { split: WorkoutSplit }) {
             >
               <Trash2 className="w-4 h-4" />
             </button>
-            <button onClick={() => setOpen(!open)} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+            <button
+              onClick={() => setOpen(!open)}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
+            >
               {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </>
         )}
       </div>
 
-      {/* Exercises list */}
+      {/* Exercises list with drag-and-drop */}
       {open && (
-        <div className="border-t border-gray-100 px-5 py-3 space-y-2">
-          <AnimatePresence>
-            {exercises.map((ex) => (
-              <motion.div
-                key={ex.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{ex.name}</p>
-                  <p className="text-xs text-gray-400">{ex.weight || "Kein Gewicht"}</p>
-                </div>
-                <button
-                  onClick={() => setEditExercise(ex)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => deleteExercise.mutate(ex.id)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+        <div className="border-t border-gray-100 px-5 py-3">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={orderedExercises.map((e) => e.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <AnimatePresence>
+                {orderedExercises.map((ex) => (
+                  <SortableExerciseRow
+                    key={ex.id}
+                    exercise={ex}
+                    onEdit={setEditExercise}
+                    onDelete={(id) => deleteExercise.mutate(id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </SortableContext>
+          </DndContext>
 
           <button
             onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 py-2 transition-colors w-full"
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 py-2.5 transition-colors w-full mt-1"
           >
             <Plus className="w-4 h-4" />
             Übung hinzufügen
@@ -205,7 +301,10 @@ export default function Settings() {
               placeholder="z.B. Arme/Brust"
               className="flex-1 h-9 rounded-xl border-gray-200 text-sm"
               autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleCreateSplit(); if (e.key === "Escape") setAddingSplit(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateSplit();
+                if (e.key === "Escape") setAddingSplit(false);
+              }}
             />
             <button onClick={handleCreateSplit} className="text-emerald-500 hover:text-emerald-600 transition-colors">
               <Check className="w-5 h-5" />

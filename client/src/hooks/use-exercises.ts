@@ -79,6 +79,23 @@ export function useDeleteExercise() {
   });
 }
 
+export function useReorderExercises() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ splitId, orderedIds }: { splitId: number; orderedIds: number[] }) => {
+      const res = await fetch("/api/exercises/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ splitId, orderedIds }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Fehler beim Sortieren");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/exercises"] }),
+  });
+}
+
 export function useFinishWorkout() {
   const queryClient = useQueryClient();
   return useMutation({
