@@ -222,6 +222,11 @@ export default function Settings() {
           splits.map((split) => <SplitSection key={split.id} split={split} />)
         )}
       </div>
+
+      {/* Footer credit */}
+      <div className="fixed bottom-[72px] left-0 right-0 flex justify-center pointer-events-none">
+        <p className="text-[11px] text-gray-300 tracking-wide">Erstellt by: Cedric Berli</p>
+      </div>
     </div>
   );
 }
