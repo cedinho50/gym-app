@@ -1,163 +1,228 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import confetti from "canvas-confetti";
-import { Plus, RotateCcw, Dumbbell } from "lucide-react";
-import { useExercises, useCreateExercise, useResetWorkout } from "@/hooks/use-exercises";
+import { Dumbbell, ChevronLeft, CheckCircle2, TrendingUp, Plus } from "lucide-react";
+import { useSplits } from "@/hooks/use-splits";
+import { useExercises, useUpdateExercise, useFinishWorkout } from "@/hooks/use-exercises";
+import { useCreateExercise } from "@/hooks/use-exercises";
 import { ExerciseCard } from "@/components/exercise-card";
 import { ExerciseForm } from "@/components/exercise-form";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import type { WorkoutSplit } from "@shared/schema";
 
-export default function Home() {
-  const { data: exercises, isLoading } = useExercises();
+function SplitSelectionScreen({ splits, onSelect }: { splits: WorkoutSplit[]; onSelect: (split: WorkoutSplit) => void }) {
+  const today = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+
+  const splitColors = [
+    { bg: "bg-blue-50", border: "border-blue-100", icon: "text-blue-500", pill: "bg-blue-100 text-blue-700" },
+    { bg: "bg-emerald-50", border: "border-emerald-100", icon: "text-emerald-500", pill: "bg-emerald-100 text-emerald-700" },
+    { bg: "bg-violet-50", border: "border-violet-100", icon: "text-violet-500", pill: "bg-violet-100 text-violet-700" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-white px-5 pt-14 pb-32">
+      <div className="max-w-md mx-auto">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <p className="text-sm font-medium text-gray-400 mb-1 capitalize">{today}</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Hallo!</h1>
+          <p className="text-gray-400 mb-10">Welches Training machst du heute?</p>
+        </motion.div>
+
+        <div className="space-y-3">
+          {splits.map((split, i) => {
+            const color = splitColors[i % splitColors.length];
+            return (
+              <motion.button
+                key={split.id}
+                data-testid={`split-card-${split.id}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.07 }}
+                onClick={() => onSelect(split)}
+                className={`w-full text-left p-5 rounded-3xl border ${color.bg} ${color.border} transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.99]`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-11 h-11 rounded-2xl bg-white/70 flex items-center justify-center ${color.icon}`}>
+                    <Dumbbell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-base">{split.name}</p>
+                    <p className="text-sm text-gray-400 mt-0.5">Training {split.order}</p>
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkoutScreen({ split, onBack }: { split: WorkoutSplit; onBack: () => void }) {
+  const { data: exercises = [], isLoading } = useExercises(split.id);
   const createMutation = useCreateExercise();
-  const resetMutation = useResetWorkout();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const finishMutation = useFinishWorkout();
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [finished, setFinished] = useState(false);
 
-  // Group exercises by category
-  const groupedExercises = useMemo(() => {
-    if (!exercises) return {};
-    return exercises.reduce((acc, exercise) => {
-      const cat = exercise.splitId ? `Split ${exercise.splitId}` : "General";
-      if (!acc[cat]) acc[cat] = [];
-      acc[cat].push(exercise);
-      return acc;
-    }, {} as Record<string, typeof exercises>);
-  }, [exercises]);
+  const completed = exercises.filter((e) => e.isCompleted).length;
+  const total = exercises.length;
+  const hasIncreaseFlags = exercises.some((e) => e.increaseNextTime);
 
-  const categories = Object.keys(groupedExercises).sort();
-
-  const handleReset = () => {
-    resetMutation.mutate(undefined, {
-      onSuccess: () => {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.3 },
-          colors: ['#2563EB', '#10B981', '#F59E0B']
-        });
-      }
+  const handleFinish = () => {
+    finishMutation.mutate(split.id, {
+      onSuccess: () => setFinished(true),
     });
   };
 
-  if (isLoading) {
+  if (finished) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <motion.div 
-          animate={{ rotate: 360 }} 
-          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-        >
-          <Dumbbell className="w-8 h-8 text-muted-foreground/30" />
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 text-center">
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring" }}>
+          <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Training abgeschlossen!</h2>
+          <p className="text-gray-400 mb-8">{split.name} wurde gespeichert.</p>
+          <Button
+            onClick={onBack}
+            className="h-12 px-8 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold"
+          >
+            Zurück zur Übersicht
+          </Button>
         </motion.div>
       </div>
     );
   }
 
-  const isEmpty = exercises?.length === 0;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+          <Dumbbell className="w-7 h-7 text-gray-300" />
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-      {/* Glass Header */}
-      <header className="sticky top-0 z-50 glass-header px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display)" }} className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-            Workout
-          </h1>
-          <p className="text-sm font-medium text-muted-foreground">Stay consistent</p>
-        </div>
-        
-        {!isEmpty && (
-          <Button 
-            onClick={handleReset}
-            disabled={resetMutation.isPending}
-            variant="outline"
-            className="rounded-xl border-border/50 shadow-sm hover:bg-secondary h-10 px-4 font-medium"
+    <div className="min-h-screen bg-white pb-36">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100 px-5 py-4">
+        <div className="max-w-md mx-auto flex items-center gap-3">
+          <button
+            data-testid="button-back"
+            onClick={onBack}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
           >
-            <RotateCcw className="w-4 h-4 mr-2 text-muted-foreground" />
-            Reset Session
-          </Button>
-        )}
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-8">
-        {isEmpty ? (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center text-center mt-32 p-8 rounded-[3rem] border border-dashed border-border bg-secondary/30"
-          >
-            <div className="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center mb-6">
-              <Dumbbell strokeWidth={1.5} className="w-10 h-10 text-muted-foreground" />
-            </div>
-            <h2 style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-semibold mb-2">No exercises yet</h2>
-            <p className="text-muted-foreground max-w-sm mb-8 leading-relaxed">
-              Create your minimal workout plan. Focus on the core movements and track your progressive overload.
-            </p>
-            <Button 
-              onClick={() => setIsCreateOpen(true)}
-              className="h-14 px-8 rounded-2xl bg-foreground hover:bg-foreground/90 text-background font-semibold shadow-xl shadow-black/5 text-lg"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Add First Exercise
-            </Button>
-          </motion.div>
-        ) : (
-          <div className="space-y-12">
-            <AnimatePresence mode="popLayout">
-              {categories.map((category) => (
-                <motion.section 
-                  key={category}
-                  layout
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <h2 
-                    style={{ fontFamily: "var(--font-display)" }} 
-                    className="text-sm font-bold tracking-[0.2em] text-muted-foreground/70 uppercase mb-4 pl-2"
-                  >
-                    {category}
-                  </h2>
-                  <div className="space-y-1">
-                    <AnimatePresence mode="popLayout">
-                      {groupedExercises[category].map((exercise) => (
-                        <ExerciseCard key={exercise.id} exercise={exercise} />
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                </motion.section>
-              ))}
-            </AnimatePresence>
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold text-gray-900">{split.name}</h1>
+            <p className="text-xs text-gray-400">{completed}/{total} Übungen</p>
           </div>
-        )}
-      </main>
+          {hasIncreaseFlags && (
+            <div className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+              <TrendingUp className="w-3.5 h-3.5" />
+              Steigern!
+            </div>
+          )}
+        </div>
+        {/* Progress bar */}
+        <div className="max-w-md mx-auto mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-gray-800 rounded-full"
+            animate={{ width: total > 0 ? `${(completed / total) * 100}%` : "0%" }}
+            transition={{ duration: 0.4 }}
+          />
+        </div>
+      </div>
 
-      {/* Floating Action Button (FAB) */}
-      {!isEmpty && (
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <button className="fixed bottom-8 right-8 w-16 h-16 bg-foreground text-background rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-300 z-40">
-              <Plus className="w-8 h-8" />
-            </button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] rounded-[2rem] border-border/50 p-6">
-            <DialogHeader className="mb-4">
-              <DialogTitle style={{ fontFamily: "var(--font-display)" }} className="text-2xl font-semibold">
-                New Exercise
-              </DialogTitle>
-            </DialogHeader>
-            <ExerciseForm
-              isPending={createMutation.isPending}
-              onCancel={() => setIsCreateOpen(false)}
-              onSubmit={(data) => {
-                createMutation.mutate(data, {
-                  onSuccess: () => setIsCreateOpen(false)
-                });
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+      <div className="max-w-md mx-auto px-5 pt-6">
+        {exercises.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Dumbbell className="w-7 h-7 text-gray-300" />
+            </div>
+            <p className="text-gray-400 mb-6">Noch keine Übungen in diesem Training.</p>
+            <Button
+              onClick={() => setIsAddOpen(true)}
+              className="h-11 px-6 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Übung hinzufügen
+            </Button>
+          </div>
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {exercises.map((exercise) => (
+              <ExerciseCard key={exercise.id} exercise={exercise} />
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {/* Bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-gray-100 px-5 py-4 z-40">
+        <div className="max-w-md mx-auto flex gap-3">
+          <button
+            data-testid="button-add-exercise"
+            onClick={() => setIsAddOpen(true)}
+            className="w-12 h-12 rounded-2xl border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+          <Button
+            data-testid="button-finish-workout"
+            onClick={handleFinish}
+            disabled={finishMutation.isPending}
+            className="flex-1 h-12 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-base"
+          >
+            {finishMutation.isPending ? "Wird gespeichert..." : "Training beenden"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Add Exercise Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-[420px] rounded-3xl border-gray-100 p-6">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-xl font-semibold">Übung hinzufügen</DialogTitle>
+          </DialogHeader>
+          <ExerciseForm
+            defaultSplitId={split.id}
+            isPending={createMutation.isPending}
+            onCancel={() => setIsAddOpen(false)}
+            onSubmit={(data) => {
+              createMutation.mutate({ ...data, splitId: split.id }, {
+                onSuccess: () => setIsAddOpen(false),
+              });
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+export default function Home() {
+  const { data: splits = [], isLoading } = useSplits();
+  const [selectedSplit, setSelectedSplit] = useState<WorkoutSplit | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+          <Dumbbell className="w-7 h-7 text-gray-300" />
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (selectedSplit) {
+    return <WorkoutScreen split={selectedSplit} onBack={() => setSelectedSplit(null)} />;
+  }
+
+  return <SplitSelectionScreen splits={splits} onSelect={setSelectedSplit} />;
 }

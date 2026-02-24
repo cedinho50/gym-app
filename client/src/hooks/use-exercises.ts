@@ -1,138 +1,100 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type ExerciseInput, type ExerciseUpdateInput } from "@shared/routes";
-import { z } from "zod";
+import type { Exercise, InsertExercise } from "@shared/schema";
 
-function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
-  const result = schema.safeParse(data);
-  if (!result.success) {
-    console.error(`[Zod] ${label} validation failed:`, result.error.format());
-    throw result.error;
-  }
-  return result.data;
-}
-
-export function useExercises() {
-  return useQuery({
-    queryKey: [api.exercises.list.path],
+export function useExercises(splitId?: number) {
+  const url = splitId ? `/api/exercises?splitId=${splitId}` : "/api/exercises";
+  return useQuery<Exercise[]>({
+    queryKey: splitId ? ["/api/exercises", splitId] : ["/api/exercises"],
     queryFn: async () => {
-      const res = await fetch(api.exercises.list.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch exercises");
-      const data = await res.json();
-      return parseWithLogging(api.exercises.list.responses[200], data, "exercises.list");
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Fehler beim Laden");
+      return res.json();
     },
   });
 }
 
 export function useCreateExercise() {
   const queryClient = useQueryClient();
-  
   return useMutation({
-    mutationFn: async (data: ExerciseInput) => {
-      const validated = api.exercises.create.input.parse(data);
-      const res = await fetch(api.exercises.create.path, {
-        method: api.exercises.create.method,
+    mutationFn: async (data: InsertExercise) => {
+      const res = await fetch("/api/exercises", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(data),
         credentials: "include",
       });
-      
-      if (!res.ok) {
-        if (res.status === 400) {
-          const error = await res.json();
-          throw new Error(error.message || "Validation failed");
-        }
-        throw new Error("Failed to create exercise");
-      }
-      
-      const responseData = await res.json();
-      return parseWithLogging(api.exercises.create.responses[201], responseData, "exercises.create");
+      if (!res.ok) throw new Error("Fehler beim Erstellen");
+      return res.json() as Promise<Exercise>;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.exercises.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
     },
   });
 }
 
 export function useUpdateExercise() {
   const queryClient = useQueryClient();
-  
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: ExerciseUpdateInput }) => {
-      const validated = api.exercises.update.input.parse(updates);
-      const url = buildUrl(api.exercises.update.path, { id });
-      
-      const res = await fetch(url, {
-        method: api.exercises.update.method,
+    mutationFn: async ({ id, updates }: { id: number; updates: Partial<InsertExercise> }) => {
+      const res = await fetch(`/api/exercises/${id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(updates),
         credentials: "include",
       });
-      
-      if (!res.ok) throw new Error("Failed to update exercise");
-      
-      const data = await res.json();
-      return parseWithLogging(api.exercises.update.responses[200], data, "exercises.update");
+      if (!res.ok) throw new Error("Fehler beim Aktualisieren");
+      return res.json() as Promise<Exercise>;
     },
     onMutate: async ({ id, updates }) => {
-      // Optimistic update for better UX, especially for toggles
-      await queryClient.cancelQueries({ queryKey: [api.exercises.list.path] });
-      const previous = queryClient.getQueryData([api.exercises.list.path]);
-      
-      queryClient.setQueryData([api.exercises.list.path], (old: any) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/exercises"] });
+      const previous = queryClient.getQueriesData({ queryKey: ["/api/exercises"] });
+      queryClient.setQueriesData({ queryKey: ["/api/exercises"] }, (old: any) => {
         if (!old) return old;
-        return old.map((ex: any) => 
-          ex.id === id ? { ...ex, ...updates } : ex
-        );
+        return old.map((ex: Exercise) => ex.id === id ? { ...ex, ...updates } : ex);
       });
-      
       return { previous };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData([api.exercises.list.path], context.previous);
+        context.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: [api.exercises.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
     },
   });
 }
 
 export function useDeleteExercise() {
   const queryClient = useQueryClient();
-  
   return useMutation({
     mutationFn: async (id: number) => {
-      const url = buildUrl(api.exercises.delete.path, { id });
-      const res = await fetch(url, {
-        method: api.exercises.delete.method,
+      const res = await fetch(`/api/exercises/${id}`, {
+        method: "DELETE",
         credentials: "include",
       });
-      
-      if (!res.ok) throw new Error("Failed to delete exercise");
+      if (!res.ok) throw new Error("Fehler beim Löschen");
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.exercises.list.path] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/exercises"] }),
   });
 }
 
-export function useResetWorkout() {
+export function useFinishWorkout() {
   const queryClient = useQueryClient();
-  
   return useMutation({
-    mutationFn: async () => {
-      const res = await fetch(api.exercises.resetCompleted.path, {
-        method: api.exercises.resetCompleted.method,
+    mutationFn: async (splitId: number) => {
+      const res = await fetch("/api/workout/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ splitId }),
         credentials: "include",
       });
-      
-      if (!res.ok) throw new Error("Failed to reset workout");
-      const data = await res.json();
-      return parseWithLogging(api.exercises.resetCompleted.responses[200], data, "exercises.reset");
+      if (!res.ok) throw new Error("Fehler beim Abschließen");
+      return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.exercises.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/history"] });
     },
   });
 }
