@@ -18,7 +18,7 @@ export default function Home() {
   const groupedExercises = useMemo(() => {
     if (!exercises) return {};
     return exercises.reduce((acc, exercise) => {
-      const cat = exercise.category || "General";
+      const cat = exercise.splitId ? `Split ${exercise.splitId}` : "General";
       if (!acc[cat]) acc[cat] = [];
       acc[cat].push(exercise);
       return acc;

@@ -64,8 +64,17 @@ export async function registerRoutes(
   });
 
   // History
-  app.get(api.history.list.list.path, async (req, res) => { // Fixed path structure if needed
+  app.get(api.history.list.path, async (req, res) => {
     res.json(await storage.getHistory());
+  });
+
+  // Reset Exercises
+  app.post(api.exercises.resetCompleted.path, async (req, res) => {
+    const allExercises = await storage.getExercises();
+    for (const ex of allExercises) {
+      await storage.updateExercise(ex.id, { isCompleted: false });
+    }
+    res.json({ success: true });
   });
 
   // Finish Workout

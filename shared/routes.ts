@@ -75,6 +75,13 @@ export const api = {
         204: z.void(),
       },
     },
+    resetCompleted: {
+      method: "POST" as const,
+      path: "/api/exercises/reset" as const,
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
   },
   history: {
     list: {
@@ -104,6 +111,9 @@ export const api = {
     },
   },
 };
+
+export type ExerciseInput = z.infer<typeof insertExerciseSchema>;
+export type ExerciseUpdateInput = Partial<ExerciseInput>;
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
   let url = path;
