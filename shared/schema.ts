@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const workoutSplits = pgTable("workout_splits", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(), // e.g., "Arme/Brust"
+  name: text("name").notNull(),
   order: integer("order").notNull().default(0),
 });
 
@@ -21,7 +21,7 @@ export const workoutHistory = pgTable("workout_history", {
   id: serial("id").primaryKey(),
   splitId: integer("split_id").references(() => workoutSplits.id).notNull(),
   completedAt: timestamp("completed_at").notNull().defaultNow(),
-  workoutData: text("workout_data").notNull(), // JSON string of exercises and their weights at the time
+  workoutData: text("workout_data").notNull(),
 });
 
 export const insertWorkoutSplitSchema = createInsertSchema(workoutSplits).omit({ id: true });

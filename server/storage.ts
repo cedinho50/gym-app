@@ -7,23 +7,19 @@ import {
 import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
-  // Splits
   getSplits(): Promise<WorkoutSplit[]>;
   createSplit(split: InsertWorkoutSplit): Promise<WorkoutSplit>;
   updateSplit(id: number, updates: Partial<InsertWorkoutSplit>): Promise<WorkoutSplit | undefined>;
   deleteSplit(id: number): Promise<void>;
 
-  // Exercises
   getExercises(splitId?: number): Promise<Exercise[]>;
   createExercise(exercise: InsertExercise): Promise<Exercise>;
   updateExercise(id: number, updates: Partial<InsertExercise>): Promise<Exercise | undefined>;
   deleteExercise(id: number): Promise<void>;
 
-  // History
   getHistory(): Promise<WorkoutHistory[]>;
   createHistory(history: InsertWorkoutHistory): Promise<WorkoutHistory>;
 
-  // Workout Flow
   finishWorkout(splitId: number): Promise<void>;
 }
 
@@ -71,25 +67,13 @@ export class DatabaseStorage implements IStorage {
 
   async finishWorkout(splitId: number): Promise<void> {
     const workoutExercises = await this.getExercises(splitId);
-    
-    // 1. Create history entry
     await this.createHistory({
       splitId,
       workoutData: JSON.stringify(workoutExercises)
     });
 
-    // 2. Process progressive overload and reset completion
     for (const ex of workoutExercises) {
-      const updates: Partial<InsertExercise> = { isCompleted: false };
-      
-      // If user marked for increase, we could handle it here or just let the weight stay and UI show it.
-      // The user said: "muss das entsprechend beim nächsten Training sichtbarsein"
-      // We'll reset increaseNextTime but keep the weight as is (or the UI can highlight it).
-      // Actually, let's keep increaseNextTime true until they manually change the weight? 
-      // Or reset it. Let's reset it to avoid "forgetting" it was checked.
-      updates.increaseNextTime = false;
-      
-      await this.updateExercise(ex.id, updates);
+      await this.updateExercise(ex.id, { isCompleted: false });
     }
   }
 }

@@ -1,16 +1,6 @@
 import { z } from "zod";
 import { insertExerciseSchema, insertWorkoutSplitSchema, insertWorkoutHistorySchema, exercises, workoutSplits, workoutHistory } from "./schema";
 
-export const errorSchemas = {
-  validation: z.object({
-    message: z.string(),
-    field: z.string().optional(),
-  }),
-  notFound: z.object({
-    message: z.string(),
-  }),
-};
-
 export const api = {
   splits: {
     list: {
@@ -89,14 +79,6 @@ export const api = {
       path: "/api/history" as const,
       responses: {
         200: z.array(z.custom<typeof workoutHistory.$inferSelect>()),
-      },
-    },
-    create: {
-      method: "POST" as const,
-      path: "/api/history" as const,
-      input: insertWorkoutHistorySchema,
-      responses: {
-        201: z.custom<typeof workoutHistory.$inferSelect>(),
       },
     },
   },
