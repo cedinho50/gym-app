@@ -224,7 +224,7 @@ export default function Settings() {
       </div>
 
       {/* Footer credit */}
-      <div className="fixed bottom-[72px] left-0 right-0 flex justify-center pointer-events-none">
+      <div className="flex justify-center pt-8 pb-4">
         <p className="text-[11px] text-gray-300 tracking-wide">Erstellt by: Cedric Berli</p>
       </div>
     </div>
