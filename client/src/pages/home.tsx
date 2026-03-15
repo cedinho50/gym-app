@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Dumbbell, ChevronLeft, CheckCircle2, TrendingUp, Plus } from "lucide-react";
+import { Dumbbell, ChevronLeft, CheckCircle2, TrendingUp, Plus, PartyPopper } from "lucide-react";
 import { useSplits } from "@/hooks/use-splits";
 import { useExercises, useUpdateExercise, useFinishWorkout } from "@/hooks/use-exercises";
 import { useCreateExercise } from "@/hooks/use-exercises";
@@ -65,14 +65,28 @@ function WorkoutScreen({ split, onBack }: { split: WorkoutSplit; onBack: () => v
   const finishMutation = useFinishWorkout();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [showFinishDialog, setShowFinishDialog] = useState(false);
+  const [allDonePromptShown, setAllDonePromptShown] = useState(false);
 
   const completed = exercises.filter((e) => e.isCompleted).length;
   const total = exercises.length;
+  const allDone = total > 0 && completed === total;
   const hasIncreaseFlags = exercises.some((e) => e.increaseNextTime);
+
+  // Auto-show finish dialog when all exercises become completed
+  useEffect(() => {
+    if (allDone && !allDonePromptShown && !finished && !isLoading) {
+      setShowFinishDialog(true);
+      setAllDonePromptShown(true);
+    }
+  }, [allDone, allDonePromptShown, finished, isLoading]);
 
   const handleFinish = () => {
     finishMutation.mutate(split.id, {
-      onSuccess: () => setFinished(true),
+      onSuccess: () => {
+        setShowFinishDialog(false);
+        setFinished(true);
+      },
     });
   };
 
@@ -132,14 +146,37 @@ function WorkoutScreen({ split, onBack }: { split: WorkoutSplit; onBack: () => v
         {/* Progress bar */}
         <div className="max-w-md mx-auto mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
           <motion.div
-            className="h-full bg-gray-800 rounded-full"
+            className={`h-full rounded-full ${allDone ? "bg-emerald-500" : "bg-gray-800"}`}
             animate={{ width: total > 0 ? `${(completed / total) * 100}%` : "0%" }}
             transition={{ duration: 0.4 }}
           />
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-5 pt-6">
+      {/* All-done reminder banner (when returning to already-completed workout) */}
+      <AnimatePresence>
+        {allDone && allDonePromptShown && !showFinishDialog && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="max-w-md mx-auto px-5 pt-4"
+          >
+            <button
+              onClick={() => setShowFinishDialog(true)}
+              className="w-full flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 text-left hover:bg-emerald-100 transition-colors"
+            >
+              <PartyPopper className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-700">Alle Übungen erledigt!</p>
+                <p className="text-xs text-emerald-600">Tippe hier um das Training zu speichern.</p>
+              </div>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="max-w-md mx-auto px-5 pt-4">
         {exercises.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -175,14 +212,53 @@ function WorkoutScreen({ split, onBack }: { split: WorkoutSplit; onBack: () => v
           </button>
           <Button
             data-testid="button-finish-workout"
-            onClick={handleFinish}
+            onClick={() => setShowFinishDialog(true)}
             disabled={finishMutation.isPending}
-            className="flex-1 h-12 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold text-base"
+            className={`flex-1 h-12 rounded-2xl font-semibold text-base transition-all ${
+              allDone
+                ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-100"
+                : "bg-gray-900 hover:bg-gray-800 text-white"
+            }`}
           >
-            {finishMutation.isPending ? "Wird gespeichert..." : "Training beenden"}
+            {allDone ? "✓ Training beenden" : "Training beenden"}
           </Button>
         </div>
       </div>
+
+      {/* Finish confirmation dialog */}
+      <Dialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>
+        <DialogContent className="sm:max-w-[360px] rounded-3xl border-gray-100 p-6 text-center">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <PartyPopper className="w-8 h-8 text-emerald-500" />
+          </div>
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-xl font-bold text-gray-900">
+              {allDone ? "Alle Übungen erledigt! 🎉" : "Training beenden?"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-400 mb-6">
+            {allDone
+              ? `${split.name} wird in der Historie gespeichert und die Übungen zurückgesetzt.`
+              : `Nur ${completed} von ${total} Übungen erledigt. Trotzdem speichern?`}
+          </p>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowFinishDialog(false)}
+              className="flex-1 h-11 rounded-2xl border-gray-200 text-gray-600"
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleFinish}
+              disabled={finishMutation.isPending}
+              className="flex-1 h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+            >
+              {finishMutation.isPending ? "Speichern..." : "Speichern"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Exercise Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
