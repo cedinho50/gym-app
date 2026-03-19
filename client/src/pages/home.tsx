@@ -142,6 +142,17 @@ function WorkoutScreen({ split, onBack }: { split: WorkoutSplit; onBack: () => v
               Steigern!
             </div>
           )}
+          <button
+            data-testid="button-finish-header"
+            onClick={() => setShowFinishDialog(true)}
+            className={`h-8 px-3 rounded-xl text-xs font-semibold transition-all ${
+              allDone
+                ? "bg-emerald-500 text-white shadow-sm shadow-emerald-100"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Beenden
+          </button>
         </div>
         {/* Progress bar */}
         <div className="max-w-md mx-auto mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
