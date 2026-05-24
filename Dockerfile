@@ -3,7 +3,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+ENV npm_config_sharp_binary_host=""
+RUN npm ci --ignore-scripts
 
 COPY . .
 RUN npm run build
@@ -13,7 +16,7 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
 
