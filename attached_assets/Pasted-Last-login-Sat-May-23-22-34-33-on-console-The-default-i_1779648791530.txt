@@ -1,0 +1,44 @@
+Last login: Sat May 23 22:34:33 on console
+
+The default interactive shell is now zsh.
+To update your account to use zsh, please run `chsh -s /bin/zsh`.
+For more details, please visit https://support.apple.com/kb/HT208050.
+Cedrics-MacBook-Air:~ cedinho_50$ ssh cedricberli@192.168.1.169
+cedricberli@192.168.1.169's password: 
+Linux RaspberryPi5Cedi 6.12.75+rpt-rpi-2712 #1 SMP PREEMPT Debian 1:6.12.75-1+rpt1 (2026-03-11) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat May 23 23:17:23 2026 from 127.0.0.1
+cedricberli@RaspberryPi5Cedi:~ $ echo "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" | docker login ghcr.io -u cedinho50 --password-stdin
+
+WARNING! Your credentials are stored unencrypted in '/home/cedricberli/.docker/config.json'.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/go/credential-store/
+
+Login Succeeded
+cedricberli@RaspberryPi5Cedi:~ $ docker run -d \
+  --name watchtower \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v ~/.docker/config.json:/config.json \
+  containrrr/watchtower \
+  --interval 300 \
+  gym-app
+Unable to find image 'containrrr/watchtower:latest' locally
+latest: Pulling from containrrr/watchtower
+b6a140e9726f: Pull complete 
+57241801ebfd: Pull complete 
+3d4f475b92a2: Pull complete 
+Digest: sha256:6dd50763bbd632a83cb154d5451700530d1e44200b268a4e9488fefdfcf2b038
+Status: Downloaded newer image for containrrr/watchtower:latest
+63a401dba885f0a91b469cafece4b0e987160464d082b63856f872fecf1f903a
+cedricberli@RaspberryPi5Cedi:~ $ docker images | grep gym
+WARNING: This output is designed for human readability. For machine-readable output, please use --format.
+cedricberli@RaspberryPi5Cedi:~ $ docker images | grep gym
+WARNING: This output is designed for human readability. For machine-readable output, please use --format.
+cedricberli@RaspberryPi5Cedi:~ $ 
