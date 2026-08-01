@@ -1,8 +1,22 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { insertExerciseSchema, insertWorkoutSplitSchema } from "@shared/schema";
+import { insertExerciseSchema, insertWorkoutSplitSchema, TARGET_REPS, TARGET_SETS } from "@shared/schema";
 import { z } from "zod";
+import { analyzeTraining, ollamaInfo } from "./ollama";
+import { buildOllamaInput, buildMarkdownReport } from "./report";
+import { pushToAll, getVapidPublicKey } from "./pushNotifications";
+
+function parseSets(sets?: string | null): number[] {
+  if (!sets) return [];
+  try {
+    const arr = JSON.parse(sets);
+    if (Array.isArray(arr)) return arr.map((n) => Number(n)).filter((n) => !isNaN(n));
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 async function seedDatabase() {
   const existingSplits = await storage.getSplits();
@@ -56,9 +70,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(201).json(await storage.createExercise(data));
   });
   app.patch("/api/exercises/:id", async (req, res) => {
-    const item = await storage.updateExercise(Number(req.params.id), insertExerciseSchema.partial().parse(req.body));
+    const id = Number(req.params.id);
+    const updates = insertExerciseSchema.partial().parse(req.body);
+    let item = await storage.updateExercise(id, updates);
     if (!item) return res.status(404).json({ message: "Not found" });
-    res.json(item);
+
+    // Steigern-Erkennung: wenn die Saetze aktualisiert wurden und der letzte
+    // Satz das Ziel erreicht, markieren wir automatisch "Steigern" und schicken
+    // eine Push-Benachrichtigung (falls konfiguriert).
+    let progressed = false;
+    if (updates.sets !== undefined) {
+      const sets = parseSets(item.sets);
+      const reachedTarget = sets.length >= TARGET_SETS && sets[sets.length - 1] >= TARGET_REPS;
+      if (reachedTarget && !item.increaseNextTime) {
+        item = (await storage.updateExercise(id, { increaseNextTime: true })) ?? item;
+        progressed = true;
+        pushToAll({
+          title: "💪 Steigern faellig!",
+          body: `${item.name}: letzter Satz ${TARGET_REPS} erreicht. Neues Gewicht eintragen.`,
+          url: "/",
+          tag: `steigern-${item.id}`,
+        }).catch((err) => console.error("[push] Fehler:", err?.message));
+      }
+    }
+
+    res.json({ ...item, progressed });
   });
   app.delete("/api/exercises/:id", async (req, res) => {
     await storage.deleteExercise(Number(req.params.id));
@@ -91,6 +127,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/workout/finish", async (req, res) => {
     const { splitId } = z.object({ splitId: z.number() }).parse(req.body);
     await storage.finishWorkout(splitId);
+    res.json({ success: true });
+  });
+
+  // ---------------------------------------------------------------
+  // KI-Analyse: Ollama auf dem Raspberry fasst den Verlauf zusammen.
+  // ---------------------------------------------------------------
+  app.get("/api/analyse", async (_req, res) => {
+    try {
+      const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
+      if (history.length === 0) {
+        return res.json({ summary: "Noch keine abgeschlossenen Trainings vorhanden. Absolviere zuerst ein Training." });
+      }
+      const input = buildOllamaInput(history, splits);
+      const summary = await analyzeTraining(input);
+      res.json({ summary, ...ollamaInfo() });
+    } catch (err: any) {
+      console.error("[analyse] Fehler:", err?.message);
+      res.status(502).json({
+        message:
+          "KI-Analyse nicht moeglich. Laeuft Ollama auf dem Raspberry und ist OLLAMA_URL richtig gesetzt? (" +
+          (err?.message || "unbekannter Fehler") + ")",
+      });
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Export: Markdown-Bericht zum Weitergeben an eine KI (z.B. Claude).
+  // ---------------------------------------------------------------
+  app.get("/api/export", async (_req, res) => {
+    try {
+      const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
+      const markdown = buildMarkdownReport(history, splits);
+      res.json({ markdown });
+    } catch (err: any) {
+      console.error("[export] Fehler:", err?.message);
+      res.status(500).json({ message: "Export fehlgeschlagen" });
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Push-Benachrichtigungen
+  // ---------------------------------------------------------------
+  app.get("/api/push/vapid-public-key", (_req, res) => {
+    res.json({ key: getVapidPublicKey() });
+  });
+  app.post("/api/push/subscribe", async (req, res) => {
+    const data = z.object({
+      endpoint: z.string(),
+      keys: z.object({ p256dh: z.string(), auth: z.string() }),
+    }).parse(req.body);
+    await storage.addPushSubscription({ endpoint: data.endpoint, p256dh: data.keys.p256dh, auth: data.keys.auth });
+    res.json({ success: true });
+  });
+  app.post("/api/push/unsubscribe", async (req, res) => {
+    const data = z.object({ endpoint: z.string() }).parse(req.body);
+    await storage.deletePushSubscription(data.endpoint);
     res.json({ success: true });
   });
 

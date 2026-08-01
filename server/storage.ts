@@ -1,8 +1,8 @@
 import { db } from "./db";
 import {
-  exercises, workoutSplits, workoutHistory,
-  type InsertExercise, type InsertWorkoutSplit, type InsertWorkoutHistory,
-  type Exercise, type WorkoutSplit, type WorkoutHistory
+  exercises, workoutSplits, workoutHistory, pushSubscriptions,
+  type InsertExercise, type InsertWorkoutSplit, type InsertWorkoutHistory, type InsertPushSubscription,
+  type Exercise, type WorkoutSplit, type WorkoutHistory, type PushSubscription
 } from "@shared/schema";
 import { eq, asc } from "drizzle-orm";
 
@@ -13,6 +13,7 @@ export interface IStorage {
   deleteSplit(id: number): Promise<void>;
 
   getExercises(splitId?: number): Promise<Exercise[]>;
+  getExercise(id: number): Promise<Exercise | undefined>;
   createExercise(exercise: InsertExercise): Promise<Exercise>;
   updateExercise(id: number, updates: Partial<InsertExercise>): Promise<Exercise | undefined>;
   deleteExercise(id: number): Promise<void>;
@@ -22,6 +23,10 @@ export interface IStorage {
   createHistory(history: InsertWorkoutHistory): Promise<WorkoutHistory>;
 
   finishWorkout(splitId: number): Promise<void>;
+
+  getAllPushSubscriptions(): Promise<PushSubscription[]>;
+  addPushSubscription(sub: InsertPushSubscription): Promise<void>;
+  deletePushSubscription(endpoint: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -48,6 +53,10 @@ export class DatabaseStorage implements IStorage {
         .orderBy(asc(exercises.order));
     }
     return await db.select().from(exercises).orderBy(asc(exercises.order));
+  }
+  async getExercise(id: number): Promise<Exercise | undefined> {
+    const [res] = await db.select().from(exercises).where(eq(exercises.id, id));
+    return res;
   }
   async createExercise(exercise: InsertExercise): Promise<Exercise> {
     // Assign next order value for the split
@@ -82,9 +91,27 @@ export class DatabaseStorage implements IStorage {
   async finishWorkout(splitId: number): Promise<void> {
     const workoutExercises = await this.getExercises(splitId);
     await this.createHistory({ splitId, workoutData: JSON.stringify(workoutExercises) });
+    // Nach dem Speichern: Haekchen und Saetze zuruecksetzen fuers naechste Mal.
+    // Die "Steigern"-Markierung bleibt bewusst bestehen, bis das neue Gewicht
+    // eingetragen wurde.
     for (const ex of workoutExercises) {
-      await this.updateExercise(ex.id, { isCompleted: false });
+      await this.updateExercise(ex.id, { isCompleted: false, sets: "[]" });
     }
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions);
+  }
+  async addPushSubscription(sub: InsertPushSubscription): Promise<void> {
+    await db.insert(pushSubscriptions)
+      .values(sub)
+      .onConflictDoUpdate({
+        target: pushSubscriptions.endpoint,
+        set: { p256dh: sub.p256dh, auth: sub.auth },
+      });
+  }
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
   }
 }
 

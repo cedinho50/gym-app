@@ -1,9 +1,22 @@
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { CalendarDays, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarDays, ChevronDown, ChevronUp, TrendingUp, Sparkles, Download, Loader2 } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { useSplits } from "@/hooks/use-splits";
+import { useAnalyse, useExportReport } from "@/hooks/use-analyse";
+import { Button } from "@/components/ui/button";
 import type { WorkoutHistory, Exercise } from "@shared/schema";
+
+function parseSets(sets?: string | null): number[] {
+  if (!sets) return [];
+  try {
+    const arr = JSON.parse(sets);
+    if (Array.isArray(arr)) return arr.map((n) => Number(n)).filter((n) => !isNaN(n));
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 function HistoryEntry({ entry, splitName }: { entry: WorkoutHistory; splitName: string }) {
   const [open, setOpen] = useState(false);
@@ -41,21 +54,87 @@ function HistoryEntry({ entry, splitName }: { entry: WorkoutHistory; splitName: 
           exit={{ opacity: 0, height: 0 }}
           className="border-t border-gray-100 px-5 pb-4 pt-3 space-y-2"
         >
-          {exercises.map((ex) => (
-            <div key={ex.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-800">{ex.name}</span>
-                {ex.increaseNextTime && (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
-                    <TrendingUp className="w-2.5 h-2.5" />
-                    Steigern
-                  </span>
-                )}
+          {exercises.map((ex) => {
+            const sets = parseSets(ex.sets);
+            return (
+              <div key={ex.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-gray-800 truncate">{ex.name}</span>
+                  {ex.increaseNextTime && (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                      <TrendingUp className="w-2.5 h-2.5" />
+                      Steigern
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {sets.length > 0 && (
+                    <span className="text-xs text-gray-400 tabular-nums">{sets.join("/")}</span>
+                  )}
+                  <span className="text-sm text-gray-500">{ex.weight || "–"}</span>
+                </div>
               </div>
-              <span className="text-sm text-gray-400">{ex.weight || "–"}</span>
-            </div>
-          ))}
+            );
+          })}
         </motion.div>
+      )}
+    </div>
+  );
+}
+
+function AnalysePanel() {
+  const analyse = useAnalyse();
+  const exportReport = useExportReport();
+
+  return (
+    <div className="rounded-3xl border border-gray-100 bg-white p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles className="w-4 h-4 text-blue-600" />
+        <h2 className="text-base font-semibold text-gray-900">KI-Analyse</h2>
+      </div>
+      <p className="text-sm text-gray-400 mb-4">
+        Ollama auf dem Raspberry wertet deinen Verlauf aus. Der Export liefert einen Bericht zum Weitergeben.
+      </p>
+
+      <div className="flex gap-2">
+        <Button
+          onClick={() => analyse.mutate()}
+          disabled={analyse.isPending}
+          className="flex-1 h-11 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold"
+        >
+          {analyse.isPending ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analysiere...</>
+          ) : (
+            <><Sparkles className="w-4 h-4 mr-2" /> Analysieren</>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => exportReport.mutate()}
+          disabled={exportReport.isPending}
+          className="h-11 px-4 rounded-2xl border-gray-200 text-gray-700 font-semibold"
+        >
+          <Download className="w-4 h-4 mr-2" /> Export
+        </Button>
+      </div>
+
+      {analyse.isError && (
+        <p className="mt-4 text-sm text-red-500">{analyse.error?.message}</p>
+      )}
+      {analyse.data && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 rounded-2xl bg-blue-50/60 border border-blue-100 p-4"
+        >
+          <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{analyse.data.summary}</p>
+          {analyse.data.model && (
+            <p className="mt-3 text-[11px] text-gray-400">Modell: {analyse.data.model}</p>
+          )}
+        </motion.div>
+      )}
+      {exportReport.isError && (
+        <p className="mt-3 text-sm text-red-500">{exportReport.error?.message}</p>
       )}
     </div>
   );
@@ -81,6 +160,8 @@ export default function History() {
       </div>
 
       <div className="max-w-md mx-auto px-5 pt-6 space-y-3">
+        <AnalysePanel />
+
         {isLoading ? (
           <div className="text-center py-20 text-gray-300 text-sm">Laden...</div>
         ) : sorted.length === 0 ? (

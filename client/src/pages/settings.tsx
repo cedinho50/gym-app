@@ -17,13 +17,48 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Bell } from "lucide-react";
 import { useSplits, useCreateSplit, useUpdateSplit, useDeleteSplit } from "@/hooks/use-splits";
 import { useExercises, useCreateExercise, useUpdateExercise, useDeleteExercise, useReorderExercises } from "@/hooks/use-exercises";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExerciseForm } from "@/components/exercise-form";
 import type { WorkoutSplit, Exercise } from "@shared/schema";
+
+function NotificationsCard() {
+  const { state, toggle } = usePushNotifications();
+
+  const label =
+    state === "subscribed" ? "Aktiviert"
+    : state === "loading" ? "..."
+    : state === "unsupported" ? "Nicht verfügbar"
+    : state === "denied" ? "Blockiert"
+    : "Aktivieren";
+
+  const on = state === "subscribed";
+
+  return (
+    <div className="border border-gray-100 rounded-3xl bg-white px-5 py-4 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+        <Bell className="w-5 h-5 text-blue-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-gray-900">Benachrichtigungen</p>
+        <p className="text-xs text-gray-400">Push, wenn eine Steigerung fällig ist</p>
+      </div>
+      <Button
+        onClick={toggle}
+        disabled={state === "loading" || state === "unsupported"}
+        variant={on ? "default" : "outline"}
+        className={`h-9 px-4 rounded-xl text-sm font-semibold ${on ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-gray-200 text-gray-700"}`}
+      >
+        {label}
+      </Button>
+    </div>
+  );
+}
 
 function SortableExerciseRow({
   exercise,
@@ -278,7 +313,9 @@ export default function Settings() {
       </div>
 
       <div className="max-w-md mx-auto px-5 pt-6 space-y-3">
-        <div className="flex items-center justify-between mb-4">
+        <NotificationsCard />
+
+        <div className="flex items-center justify-between mb-4 pt-2">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Trainings</p>
           <button
             onClick={() => setAddingSplit(true)}
