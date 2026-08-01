@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { CalendarDays, ChevronDown, ChevronUp, TrendingUp, Sparkles, Download, Loader2, Clock, X, Check } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronUp, TrendingUp, Sparkles, Download, Loader2, Clock, X, Check, Copy } from "lucide-react";
 import { useHistory } from "@/hooks/use-history";
 import { useSplits } from "@/hooks/use-splits";
-import { useStartAnalyse, useLatestAnalysis, useExportReport, useReminder, useSetReminder, useDeleteReminder } from "@/hooks/use-analyse";
+import { useStartAnalyse, useLatestAnalysis, useExportReport, useCopyReport, useReminder, useSetReminder, useDeleteReminder } from "@/hooks/use-analyse";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { WorkoutHistory, Exercise } from "@shared/schema";
@@ -87,6 +87,7 @@ function AnalysePanel() {
   const start = useStartAnalyse();
   const { data: latest } = useLatestAnalysis();
   const exportReport = useExportReport();
+  const copyReport = useCopyReport();
 
   const running = start.isPending || latest?.status === "pending";
 
@@ -97,19 +98,32 @@ function AnalysePanel() {
         <h2 className="text-base font-semibold text-gray-900">KI-Analyse</h2>
       </div>
       <p className="text-sm text-gray-400 mb-4">
-        Ollama auf dem Raspberry wertet deinen Verlauf aus. Der Export liefert einen ausführlichen Bericht zum Weitergeben.
+        Ollama auf dem Raspberry wertet deinen Verlauf aus. Mit "Kopieren" oder "Export" gibst du den ausführlichen Bericht an Claude oder Gemini weiter.
       </p>
 
-      <div className="flex gap-2">
+      <Button
+        onClick={() => start.mutate()}
+        disabled={running}
+        className="w-full h-11 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold"
+      >
+        {running ? (
+          <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analysiere...</>
+        ) : (
+          <><Sparkles className="w-4 h-4 mr-2" /> Analysieren</>
+        )}
+      </Button>
+
+      <div className="flex gap-2 mt-2">
         <Button
-          onClick={() => start.mutate()}
-          disabled={running}
-          className="flex-1 h-11 rounded-2xl bg-gray-900 hover:bg-gray-800 text-white font-semibold"
+          variant="outline"
+          onClick={() => copyReport.mutate()}
+          disabled={copyReport.isPending}
+          className="flex-1 h-11 rounded-2xl border-gray-200 text-gray-700 font-semibold"
         >
-          {running ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analysiere...</>
+          {copyReport.isSuccess ? (
+            <><Check className="w-4 h-4 mr-2 text-emerald-600" /> Kopiert!</>
           ) : (
-            <><Sparkles className="w-4 h-4 mr-2" /> Analysieren</>
+            <><Copy className="w-4 h-4 mr-2" /> Bericht kopieren</>
           )}
         </Button>
         <Button
@@ -121,6 +135,9 @@ function AnalysePanel() {
           <Download className="w-4 h-4 mr-2" /> Export
         </Button>
       </div>
+      {copyReport.isError && (
+        <p className="mt-2 text-sm text-red-500">{copyReport.error?.message}</p>
+      )}
 
       {running && (
         <div className="mt-4 flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-2xl p-3">
