@@ -49,24 +49,51 @@ export function useLatestAnalysis() {
   });
 }
 
-// Holt den Markdown-Bericht und laedt ihn als Datei herunter.
+async function fetchReport(): Promise<string> {
+  const res = await fetch("/api/export", { credentials: "include" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || "Export fehlgeschlagen");
+  return data.markdown ?? "";
+}
+
+// Laedt den Bericht als Text-Datei herunter (auf dem Handy als Text zu oeffnen).
 export function useExportReport() {
   return useMutation<void, Error>({
     mutationFn: async () => {
-      const res = await fetch("/api/export", { credentials: "include" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || "Export fehlgeschlagen");
-      const markdown: string = data.markdown ?? "";
-      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const text = await fetchReport();
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const stamp = new Date().toISOString().slice(0, 10);
       a.href = url;
-      a.download = `gym-bericht-${stamp}.md`;
+      a.download = `gym-bericht-${stamp}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    },
+  });
+}
+
+// Kopiert den Bericht direkt in die Zwischenablage (praktisch am Handy).
+export function useCopyReport() {
+  return useMutation<void, Error>({
+    mutationFn: async () => {
+      const text = await fetchReport();
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback fuer aeltere Browser
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
     },
   });
 }
