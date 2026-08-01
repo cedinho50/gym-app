@@ -13,11 +13,9 @@ export const exercises = pgTable("exercises", {
   name: text("name").notNull(),
   splitId: integer("split_id").references(() => workoutSplits.id),
   weight: text("weight").notNull().default(""),
+  category: text("category"),
   isCompleted: boolean("is_completed").notNull().default(false),
   increaseNextTime: boolean("increase_next_time").notNull().default(false),
-  // Wiederholungen der einzelnen Saetze im aktuellen Training, als JSON-Zahlen-Array,
-  // z.B. "[10,10,7]". Leer "[]" wenn noch nichts eingetragen. Wird beim Beenden
-  // in die Historie kopiert und danach zurueckgesetzt.
   sets: text("sets").notNull().default("[]"),
   order: integer("order").notNull().default(0),
 });
@@ -29,7 +27,6 @@ export const workoutHistory = pgTable("workout_history", {
   workoutData: text("workout_data").notNull(),
 });
 
-// Abos fuer Push-Benachrichtigungen (ein Eintrag pro Geraet/Browser).
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
   endpoint: text("endpoint").notNull().unique(),
@@ -52,9 +49,4 @@ export type InsertWorkoutHistory = z.infer<typeof insertWorkoutHistorySchema>;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
 
-// Zielwerte der Steigerungs-Logik werden aus einer Drizzle-freien Datei
-// re-exportiert, damit Server-Code sie weiterhin aus "@shared/schema" laden kann.
 export { TARGET_SETS, TARGET_REPS } from "./constants";
-weight: text("weight").notNull().default(""),
-category: text("category"),   // <-- neu, damit deine Spalte erhalten bleibt
-isCompleted: boolean("is_completed").notNull().default(false),
