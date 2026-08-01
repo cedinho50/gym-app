@@ -55,3 +55,6 @@ export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema
 // Zielwerte der Steigerungs-Logik werden aus einer Drizzle-freien Datei
 // re-exportiert, damit Server-Code sie weiterhin aus "@shared/schema" laden kann.
 export { TARGET_SETS, TARGET_REPS } from "./constants";
+weight: text("weight").notNull().default(""),
+category: text("category"),   // <-- neu, damit deine Spalte erhalten bleibt
+isCompleted: boolean("is_completed").notNull().default(false),
