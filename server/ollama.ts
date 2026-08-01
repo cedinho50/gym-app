@@ -10,7 +10,8 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://192.168.1.169:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:1b";
 
 // Wie lange darf der Pi maximal rechnen, bevor wir abbrechen.
-const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS || 90000);
+// Grosszuegig, weil das Modell beim ersten Aufruf kalt geladen wird.
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS || 240000);
 
 export function ollamaInfo() {
   return { url: OLLAMA_URL, model: OLLAMA_MODEL };
@@ -39,7 +40,8 @@ export async function analyzeTraining(inputText: string): Promise<string> {
     });
     if (!res.ok) throw new Error("Ollama HTTP " + res.status);
     const data: any = await res.json();
-    const answer = String(data.response || "").trim();
+    // Schweizer Schreibweise erzwingen: kein Eszett, stattdessen ss.
+    const answer = String(data.response || "").trim().replace(/ß/g, "ss");
     if (!answer) throw new Error("Ollama hat keine Antwort geliefert");
     return answer;
   } finally {
@@ -70,7 +72,8 @@ function buildAnalysePrompt(inputText: string): string {
     "Analysiere die folgenden Trainingsdaten. " +
     "Nenne kurz: Uebungen mit gutem Fortschritt, Uebungen mit Stillstand ueber mehrere Trainings, " +
     "und bei welchen Uebungen eine Gewichtserhoehung faellig oder fast faellig ist. " +
-    "Antworte auf Deutsch, in hoechstens 8 kurzen Saetzen, ohne Aufzaehlungszeichen. " +
+    "Antworte auf Deutsch in Schweizer Rechtschreibung (kein Eszett, stattdessen ss) und verwende die Umlaute ae als ä, oe als ö, ue als ü. " +
+    "Antworte in hoechstens 8 kurzen Saetzen, ohne Aufzaehlungszeichen. " +
     "Trainingsdaten:\n\n" +
     inputText.slice(0, 6000) +
     "\n\nZusammenfassung:"

@@ -1,10 +1,10 @@
 // ------------------------------------------------------------------
 // Baut aus der Trainings-Historie zwei Dinge:
 //  1) einen kompakten Text als Eingabe fuer Ollama (klein halten!)
-//  2) einen ausfuehrlichen Markdown-Bericht zum Export, so formuliert,
-//     dass er direkt an eine KI (z.B. Claude oder Gemini) weitergegeben
-//     werden kann, inkl. Struktur, Frequenz, Ruhetagen und Volumen.
-// Vorbild fuer den Export-Stil: das Projekt "Pi-Doktor".
+//  2) einen ausfuehrlichen Bericht zum Export, so formuliert, dass er
+//     direkt an eine KI (z.B. Claude oder Gemini) weitergegeben werden
+//     kann, inkl. Struktur, Frequenz, Ruhetagen und Volumen.
+// Text in Schweizer Schreibweise (kein Eszett, stattdessen ss) mit Umlauten.
 // ------------------------------------------------------------------
 
 import type { WorkoutHistory, WorkoutSplit, Exercise } from "@shared/schema";
@@ -39,7 +39,7 @@ function parseSnapshot(workoutData: string): ExerciseSnapshot[] {
 }
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function setsLabel(sets: number[]): string {
@@ -51,7 +51,6 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round(Math.abs(b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-// Sammelt pro Uebung die Trainings (aelteste zuerst).
 interface ExerciseTimeline {
   name: string;
   entries: Array<{ date: Date; split: string; weight: string; sets: number[] }>;
@@ -92,7 +91,7 @@ export function buildOllamaInput(history: WorkoutHistory[], splits: WorkoutSplit
   return lines.join("\n");
 }
 
-// Ausfuehrlicher Markdown-Bericht zum Export.
+// Ausfuehrlicher Bericht zum Export (Umlaute, Schweizer Schreibweise).
 export function buildMarkdownReport(
   history: WorkoutHistory[],
   splits: WorkoutSplit[],
@@ -106,7 +105,7 @@ export function buildMarkdownReport(
   const out: string[] = [];
   out.push(`# Trainings-Bericht Gym`);
   out.push("");
-  out.push(`Erstellt am ${fmtDate(now)} um ${now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.`);
+  out.push(`Erstellt am ${fmtDate(now)} um ${now.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })} Uhr.`);
   out.push("");
   out.push(
     "Dieser Bericht ist so formuliert, dass er direkt an eine KI (z.B. Claude oder Gemini) " +
@@ -116,10 +115,10 @@ export function buildMarkdownReport(
   out.push("## Trainingsmethode");
   out.push("");
   out.push(
-    `Ganzkoerper-Split in ${splits.length} Einheiten. Pro Uebung 3 Saetze, Ziel ${TARGET_REPS} Wiederholungen. ` +
-    `Das Gewicht ist so gewaehlt, dass im letzten Satz zuerst nur etwa 6 Wiederholungen moeglich sind. Sobald der letzte ` +
-    `Satz ${TARGET_REPS} Wiederholungen erreicht, wird das Gewicht erhoeht (Doppelprogression). ` +
-    `Saetze werden als "Satz1/Satz2/Satz3" angegeben. Ziel: 3 Saetze, ${TARGET_REPS} Wdh.`,
+    `Ganzkörper-Split in ${splits.length} Einheiten. Pro Übung 3 Sätze, Ziel ${TARGET_REPS} Wiederholungen. ` +
+    `Das Gewicht ist so gewählt, dass im letzten Satz zuerst nur etwa 6 Wiederholungen möglich sind. Sobald der letzte ` +
+    `Satz ${TARGET_REPS} Wiederholungen erreicht, wird das Gewicht erhöht (Doppelprogression). ` +
+    `Sätze werden als "Satz1/Satz2/Satz3" angegeben. Ziel: 3 Sätze, ${TARGET_REPS} Wdh.`,
   );
   out.push("");
 
@@ -127,7 +126,7 @@ export function buildMarkdownReport(
   out.push("## Trainingsstruktur (aktueller Plan)");
   out.push("");
   if (exercises.length === 0) {
-    out.push("Keine aktuellen Uebungen gefunden.");
+    out.push("Keine aktuellen Übungen gefunden.");
     out.push("");
   } else {
     const bySplit = new Map<number, Exercise[]>();
@@ -137,9 +136,9 @@ export function buildMarkdownReport(
       bySplit.get(sid)!.push(ex);
     }
     out.push(`Anzahl Trainingseinheiten (Muskelgruppen): ${splits.length}`);
-    out.push(`Anzahl Uebungen gesamt: ${exercises.length}`);
+    out.push(`Anzahl Übungen gesamt: ${exercises.length}`);
     out.push("");
-    out.push("| Trainingseinheit (Muskelgruppe) | Anzahl Uebungen | Uebungen |");
+    out.push("| Trainingseinheit (Muskelgruppe) | Anzahl Übungen | Übungen |");
     out.push("|---|---|---|");
     for (const s of splits) {
       const list = (bySplit.get(s.id) ?? []).slice().sort((a, b) => a.order - b.order);
@@ -164,11 +163,9 @@ export function buildMarkdownReport(
     out.push(`Abgeschlossene Trainings gesamt: ${history.length}`);
     out.push(`Zeitraum: ${fmtDate(first)} bis ${fmtDate(last)} (${spanDays} Tage)`);
     out.push(`Durchschnitt: ${perWeek.toFixed(1)} Trainings pro Woche`);
-    const sinceLast = daysBetween(last, now);
-    out.push(`Tage seit dem letzten Training: ${sinceLast}`);
+    out.push(`Tage seit dem letzten Training: ${daysBetween(last, now)}`);
     out.push("");
 
-    // Ruhetage zwischen aufeinanderfolgenden Trainings (beliebiger Split)
     const gaps: number[] = [];
     for (let i = 1; i < sorted.length; i++) {
       gaps.push(daysBetween(new Date(sorted[i - 1].completedAt), new Date(sorted[i].completedAt)));
@@ -179,7 +176,6 @@ export function buildMarkdownReport(
       out.push("");
     }
 
-    // Verteilung pro Split
     out.push("Verteilung je Trainingseinheit:");
     out.push("");
     out.push("| Trainingseinheit | Anzahl Trainings | Letztes Training | Tage seither | Ø Pause (Tage) |");
@@ -203,8 +199,8 @@ export function buildMarkdownReport(
   out.push("## Volumen (letzte Trainings)");
   out.push("");
   out.push(
-    "Volumen = Anzahl Saetze und Summe der Wiederholungen. Wiederholungen werden erst seit dem Update erfasst, " +
-    "aeltere Trainings zeigen daher evtl. keine Wdh.",
+    "Volumen = Anzahl Sätze und Summe der Wiederholungen. Wiederholungen werden erst seit dem Update erfasst, " +
+    "ältere Trainings zeigen daher evtl. keine Wdh.",
   );
   out.push("");
   {
@@ -212,7 +208,7 @@ export function buildMarkdownReport(
     if (sortedDesc.length === 0) {
       out.push("Keine Daten.");
     } else {
-      out.push("| Datum | Einheit | Uebungen | Saetze gesamt | Wdh. gesamt |");
+      out.push("| Datum | Einheit | Übungen | Sätze gesamt | Wdh. gesamt |");
       out.push("|---|---|---|---|---|");
       for (const h of sortedDesc) {
         const snap = parseSnapshot(h.workoutData);
@@ -239,7 +235,7 @@ export function buildMarkdownReport(
   }
 
   // ----- Verlauf pro Uebung -----
-  out.push("## Verlauf pro Uebung");
+  out.push("## Verlauf pro Übung");
   out.push("");
   if (timelines.length === 0) {
     out.push("Keine Trainingsdaten vorhanden.");
@@ -247,7 +243,7 @@ export function buildMarkdownReport(
     for (const t of timelines) {
       out.push(`### ${t.name}`);
       out.push("");
-      out.push("| Datum | Einheit | Gewicht | Saetze (Wdh.) | Letzter Satz |");
+      out.push("| Datum | Einheit | Gewicht | Sätze (Wdh.) | Letzter Satz |");
       out.push("|---|---|---|---|---|");
       for (const e of t.entries) {
         const last = e.sets.length ? String(e.sets[e.sets.length - 1]) : "-";
@@ -263,13 +259,13 @@ export function buildMarkdownReport(
   out.push("");
   out.push(
     "Bitte analysiere den Fortschritt und gib konkrete Empfehlungen zu: " +
-    "1) Gewichtssteigerungen (wo faellig, wo Stillstand), " +
-    "2) Trainingsvolumen (Saetze pro Muskelgruppe pro Woche, zu viel oder zu wenig), " +
+    "1) Gewichtssteigerungen (wo fällig, wo Stillstand), " +
+    "2) Trainingsvolumen (Sätze pro Muskelgruppe pro Woche, zu viel oder zu wenig), " +
     "3) Ruhetage und Frequenz (passt die Erholung, sind mehr oder weniger Trainings sinnvoll), " +
-    "4) Intensitaet (passt die 6-bis-10-Progression), " +
-    "5) Uebungsauswahl und Anzahl Uebungen pro Einheit (fehlt etwas, ist etwas doppelt, Balance der Muskelgruppen), " +
-    "6) einen konkreten Plan fuer die naechsten Wochen. " +
-    "Nenne am Ende bitte auch, nach wie vielen Wochen ich den Fortschritt erneut pruefen sollte.",
+    "4) Intensität (passt die 6-bis-10-Progression), " +
+    "5) Übungsauswahl und Anzahl Übungen pro Einheit (fehlt etwas, ist etwas doppelt, Balance der Muskelgruppen), " +
+    "6) einen konkreten Plan für die nächsten Wochen. " +
+    "Nenne am Ende bitte auch, nach wie vielen Wochen ich den Fortschritt erneut prüfen sollte.",
   );
   out.push("");
 
