@@ -7,6 +7,62 @@ import { analyzeTraining, ollamaInfo } from "./ollama";
 import { buildOllamaInput, buildMarkdownReport } from "./report";
 import { pushToAll, getVapidPublicKey } from "./pushNotifications";
 
+// Fuehrt eine KI-Analyse im Hintergrund aus und schickt danach eine Push.
+async function runAnalysisInBackground(analysisId: number) {
+  try {
+    const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
+    if (history.length === 0) {
+      await storage.finishAnalysis(analysisId, "done", "Noch keine abgeschlossenen Trainings vorhanden. Absolviere zuerst ein Training.", ollamaInfo().model);
+      return;
+    }
+    const input = buildOllamaInput(history, splits);
+    const summary = await analyzeTraining(input);
+    await storage.finishAnalysis(analysisId, "done", summary, ollamaInfo().model);
+    pushToAll({
+      title: "🧠 KI-Analyse fertig",
+      body: "Dein Trainingsbericht steht bereit. Tippe zum Ansehen.",
+      url: "/",
+      tag: "analyse-fertig",
+    }).catch((err) => console.error("[analyse] Push-Fehler:", err?.message));
+  } catch (err: any) {
+    console.error("[analyse] Fehler:", err?.message);
+    await storage.finishAnalysis(
+      analysisId,
+      "error",
+      "KI-Analyse nicht moeglich. Laeuft Ollama auf dem Raspberry? (" + (err?.message || "unbekannter Fehler") + ")",
+      ollamaInfo().model,
+    );
+    pushToAll({
+      title: "KI-Analyse fehlgeschlagen",
+      body: "Die Analyse konnte nicht erstellt werden. Bitte spaeter erneut versuchen.",
+      url: "/",
+      tag: "analyse-fehler",
+    }).catch(() => {});
+  }
+}
+
+// Prueft jede Minute auf faellige Erinnerungen und verschickt sie als Push.
+function startReminderScheduler() {
+  const tick = async () => {
+    try {
+      const due = await storage.getDueReminders();
+      for (const r of due) {
+        await pushToAll({
+          title: "⏰ Zeit fuer die Fortschritts-Pruefung",
+          body: r.note && r.note.trim() ? r.note : "Exportiere deinen Bericht und lass ihn analysieren.",
+          url: "/",
+          tag: `reminder-${r.id}`,
+        });
+        await storage.markReminderSent(r.id);
+      }
+    } catch (err: any) {
+      console.error("[reminder] Scheduler-Fehler:", err?.message);
+    }
+  };
+  setInterval(tick, 60 * 1000);
+  tick().catch(() => {});
+}
+
 function parseSets(sets?: string | null): number[] {
   if (!sets) return [];
   try {
@@ -41,6 +97,7 @@ async function seedDatabase() {
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   await seedDatabase();
+  startReminderScheduler();
 
   // Splits
   app.get("/api/splits", async (req, res) => {
@@ -131,39 +188,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ---------------------------------------------------------------
-  // KI-Analyse: Ollama auf dem Raspberry fasst den Verlauf zusammen.
+  // KI-Analyse: laeuft im Hintergrund. Start liefert sofort zurueck,
+  // das Ergebnis wird gespeichert und per Push gemeldet.
   // ---------------------------------------------------------------
-  app.get("/api/analyse", async (_req, res) => {
-    try {
-      const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
-      if (history.length === 0) {
-        return res.json({ summary: "Noch keine abgeschlossenen Trainings vorhanden. Absolviere zuerst ein Training." });
-      }
-      const input = buildOllamaInput(history, splits);
-      const summary = await analyzeTraining(input);
-      res.json({ summary, ...ollamaInfo() });
-    } catch (err: any) {
-      console.error("[analyse] Fehler:", err?.message);
-      res.status(502).json({
-        message:
-          "KI-Analyse nicht moeglich. Laeuft Ollama auf dem Raspberry und ist OLLAMA_URL richtig gesetzt? (" +
-          (err?.message || "unbekannter Fehler") + ")",
-      });
-    }
+  app.post("/api/analyse", async (_req, res) => {
+    const analysis = await storage.createAnalysis();
+    // Nicht awaiten: laeuft im Hintergrund weiter.
+    runAnalysisInBackground(analysis.id);
+    res.status(202).json({ id: analysis.id, status: "pending" });
+  });
+
+  app.get("/api/analyse/latest", async (_req, res) => {
+    const latest = await storage.getLatestAnalysis();
+    if (!latest) return res.json(null);
+    res.json(latest);
   });
 
   // ---------------------------------------------------------------
-  // Export: Markdown-Bericht zum Weitergeben an eine KI (z.B. Claude).
+  // Export: ausfuehrlicher Markdown-Bericht zum Weitergeben an eine KI.
   // ---------------------------------------------------------------
   app.get("/api/export", async (_req, res) => {
     try {
-      const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
-      const markdown = buildMarkdownReport(history, splits);
+      const [history, splits, exercises] = await Promise.all([
+        storage.getHistory(),
+        storage.getSplits(),
+        storage.getExercises(),
+      ]);
+      const latest = await storage.getLatestAnalysis();
+      const ollamaSummary = latest && latest.status === "done" ? latest.summary : undefined;
+      const markdown = buildMarkdownReport(history, splits, exercises, ollamaSummary);
       res.json({ markdown });
     } catch (err: any) {
       console.error("[export] Fehler:", err?.message);
       res.status(500).json({ message: "Export fehlgeschlagen" });
     }
+  });
+
+  // ---------------------------------------------------------------
+  // Erinnerungen fuer die naechste Fortschritts-Pruefung.
+  // ---------------------------------------------------------------
+  app.get("/api/reminder", async (_req, res) => {
+    const next = await storage.getUpcomingReminder();
+    res.json(next ?? null);
+  });
+  app.post("/api/reminder", async (req, res) => {
+    const body = z.object({ remindAt: z.string(), note: z.string().optional() }).parse(req.body);
+    const remindAt = new Date(body.remindAt);
+    if (isNaN(remindAt.getTime())) return res.status(400).json({ message: "Ungueltiges Datum" });
+    const reminder = await storage.createReminder({ remindAt, note: body.note ?? "" });
+    res.status(201).json(reminder);
+  });
+  app.delete("/api/reminder/:id", async (req, res) => {
+    await storage.deleteReminder(Number(req.params.id));
+    res.status(204).end();
   });
 
   // ---------------------------------------------------------------

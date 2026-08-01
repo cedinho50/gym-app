@@ -1,10 +1,10 @@
 import { db } from "./db";
 import {
-  exercises, workoutSplits, workoutHistory, pushSubscriptions,
-  type InsertExercise, type InsertWorkoutSplit, type InsertWorkoutHistory, type InsertPushSubscription,
-  type Exercise, type WorkoutSplit, type WorkoutHistory, type PushSubscription
+  exercises, workoutSplits, workoutHistory, pushSubscriptions, analyses, reminders,
+  type InsertExercise, type InsertWorkoutSplit, type InsertWorkoutHistory, type InsertPushSubscription, type InsertReminder,
+  type Exercise, type WorkoutSplit, type WorkoutHistory, type PushSubscription, type Analysis, type Reminder
 } from "@shared/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, lte } from "drizzle-orm";
 
 export interface IStorage {
   getSplits(): Promise<WorkoutSplit[]>;
@@ -27,6 +27,16 @@ export interface IStorage {
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
   addPushSubscription(sub: InsertPushSubscription): Promise<void>;
   deletePushSubscription(endpoint: string): Promise<void>;
+
+  createAnalysis(): Promise<Analysis>;
+  finishAnalysis(id: number, status: "done" | "error", summary: string, model: string): Promise<void>;
+  getLatestAnalysis(): Promise<Analysis | undefined>;
+
+  createReminder(reminder: InsertReminder): Promise<Reminder>;
+  getUpcomingReminder(): Promise<Reminder | undefined>;
+  getDueReminders(): Promise<Reminder[]>;
+  markReminderSent(id: number): Promise<void>;
+  deleteReminder(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -112,6 +122,44 @@ export class DatabaseStorage implements IStorage {
   }
   async deletePushSubscription(endpoint: string): Promise<void> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  // --- Analysen ---
+  async createAnalysis(): Promise<Analysis> {
+    const [res] = await db.insert(analyses).values({ status: "pending" }).returning();
+    return res;
+  }
+  async finishAnalysis(id: number, status: "done" | "error", summary: string, model: string): Promise<void> {
+    await db.update(analyses)
+      .set({ status, summary, model, finishedAt: new Date() })
+      .where(eq(analyses.id, id));
+  }
+  async getLatestAnalysis(): Promise<Analysis | undefined> {
+    const [res] = await db.select().from(analyses).orderBy(desc(analyses.createdAt)).limit(1);
+    return res;
+  }
+
+  // --- Erinnerungen ---
+  async createReminder(reminder: InsertReminder): Promise<Reminder> {
+    const [res] = await db.insert(reminders).values(reminder).returning();
+    return res;
+  }
+  async getUpcomingReminder(): Promise<Reminder | undefined> {
+    const [res] = await db.select().from(reminders)
+      .where(isNull(reminders.sentAt))
+      .orderBy(asc(reminders.remindAt))
+      .limit(1);
+    return res;
+  }
+  async getDueReminders(): Promise<Reminder[]> {
+    return await db.select().from(reminders)
+      .where(and(isNull(reminders.sentAt), lte(reminders.remindAt, new Date())));
+  }
+  async markReminderSent(id: number): Promise<void> {
+    await db.update(reminders).set({ sentAt: new Date() }).where(eq(reminders.id, id));
+  }
+  async deleteReminder(id: number): Promise<void> {
+    await db.delete(reminders).where(eq(reminders.id, id));
   }
 }
 
