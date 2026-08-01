@@ -18,6 +18,8 @@ jobs:
 
       - name: Docker Buildx einrichten
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
       - name: Bei GitHub Container Registry anmelden
         uses: docker/login-action@v3
