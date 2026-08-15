@@ -1,0 +1,218 @@
+# Gym App – Cursor Rules
+
+Persönliche Trainings-Tracker-PWA für Cedric Berli. Mobile-first, deutschsprachig.
+Läuft produktiv auf dem Raspberry Pi als Docker-Container `gym-app` mit PostgreSQL und lokalem Ollama.
+
+Repository: `cedinho50/gym-app` · Branch: `main`
+
+## Zweck (in Kurzform)
+
+Die App hilft beim Krafttraining nach der Doppelprogressions-Methode:
+3 Sätze pro Übung, Ziel 10 Wiederholungen. Erst wenn der letzte Satz 10 Wdh. schafft, wird das Gewicht erhöht.
+Trainings werden abgehakt, in der Historie gespeichert, lokal per Ollama zusammengefasst und als ausführlicher
+Bericht exportiert – zum Weitergeben an eine stärkere externe KI (Claude, Gemini etc.).
+
+---
+
+## Verbindliche Arbeitsregeln (Agent)
+
+Cedric entwickelt fast ausschliesslich über den Agenten. Diese Regeln gelten für **jede** zukünftige Aufgabe.
+
+### 1. Automatisches GitHub-Backup
+
+- Nach jedem **abgeschlossenen** Feature, Bugfix oder Änderungsschritt:
+  1. Sauberen Git-Commit mit **aussagekräftiger** Commit-Nachricht erstellen (Was + Warum, auf Deutsch oder Englisch).
+  2. Änderungen **sofort** nach `origin main` pushen (`git push origin main`).
+- Vor dem Arbeiten: `git pull origin main`, damit die lokale Kopie aktuell ist.
+- Keine halbfertigen Commits – nur wenn der Schritt funktional abgeschlossen ist.
+- Keine Secrets (.env, VAPID-Keys, DB-Passwörter) committen.
+
+### 2. Versionierung & Rollback-Sicherheit
+
+- **Semantic Versioning** (`vX.Y.Z`) in `package.json` pflegen:
+  - **Patch** (Z): Bugfixes, kleine Anpassungen
+  - **Minor** (Y): neue Features, abwärtskompatibel
+  - **Major** (X): Breaking Changes (Schema, API, Deploy)
+- Bei stabilen Meilensteinen oder grösseren Releases:
+  - Git-Tag setzen: `git tag -a vX.Y.Z -m "Beschreibung"` und pushen: `git push origin vX.Y.Z`
+  - Alternativ eindeutig benannte Checkpoint-Commits (z. B. `checkpoint: vor Schema-Migration v1.3.0`)
+- Ziel: Jederzeit schnell auf einen stabilen Stand zurückspringen können (`git checkout vX.Y.Z`).
+
+### 3. Automatische Pflege der .cursorrules
+
+- Der Agent verwaltet diese Datei **eigenständig** – Cedric schreibt keinen Code manuell.
+- **Sofort aktualisieren**, wenn sich ändern:
+  - Architektur, Tech-Stack, Zweck
+  - Docker-Services, Ports, Container-Namen
+  - Datenbank-Schema, neue Tabellen/Spalten
+  - API-Endpunkte, Schnittstellen (Ollama, Push, Export)
+  - Umgebungsvariablen
+  - Deploy-Pipeline, Versionierung
+- Änderungen an `.cursorrules` gehören in denselben Commit/Push-Zyklus wie der auslösende Code.
+
+### 4. Raspberry Pi & Docker-Umgebung
+
+- **Produktiv**: Raspberry Pi, **Linux ARM64**, Docker-Container `gym-app`.
+- Bei jedem Skript und jeder Code-Anpassung beachten:
+  - **Ressourcenschonend**: Pi-Hardware ist limitiert (RAM, CPU). Keine unnötig schweren Dependencies, keine blockierenden Langläufer im Request-Pfad (Hintergrund-Jobs wie Ollama-Analyse beibehalten).
+  - **ARM64-kompatibel**: Build über nativen ARM-Runner in GitHub Actions – keine x86-only-Binaries.
+  - **Berechtigungen**: Dateien/Verzeichnisse auf dem Pi beachten (häufig root/nogroup). Bei Schreibproblemen Ownership prüfen, nicht blind sudo verwenden.
+  - **Container-Management**: Deploy-Pipeline nicht umbauen (GHCR + Watchtower). Image: `ghcr.io/cedinho50/replit-gym-app:latest`.
+  - **Zwei getrennte DBs**: Replit-Postgres (Dev) ≠ Pi-Postgres (Prod). Schema-Änderungen via `npm run db:push` auf der jeweiligen Umgebung.
+- Dockerfile-`sed`-Fix für Replit package-lock.json **beibehalten** – nicht entfernen.
+
+---
+
+## Wichtig: Keine Cloud-KI in dieser App
+
+- **Keine** openai- oder @google/generative-ai-Pakete – bewusst so designed.
+- Die Auswertung macht **lokales Ollama** auf dem Raspberry per HTTP (`POST /api/generate`).
+- Erwähnung von openai/gemini in `script/build.ts` ist nur **esbuild-Allowlist** aus dem Replit-Template (toter Ballast).
+- **Nicht neu bauen** – vorhandenen Code in `server/ollama.ts`, `server/report.ts`, Hooks und Routes nutzen.
+
+## KI-Architektur (zwei Stufen)
+
+1. **Lokal (Ollama, llama3.2:1b):** Knappe Zusammenfassung der letzten Trainings.
+   - `server/ollama.ts` → `analyzeTraining()` ruft `{OLLAMA_URL}/api/generate` auf.
+   - Env: `OLLAMA_URL` (Default `http://192.168.1.169:11434`), `OLLAMA_MODEL` (Default `llama3.2:1b`), `OLLAMA_TIMEOUT_MS` (Default `240000`).
+   - Ausgabe: Schweizer Schreibweise (ß → ss).
+
+2. **Export für externe KI:** Ausführlicher Markdown-Bericht.
+   - `server/report.ts` → `buildOllamaInput()` (kompakt fürs lokale Modell), `buildMarkdownReport()` (Struktur, Frequenz, Ruhetage, Volumen, Verlauf pro Übung).
+   - Client: `useExportReport()` (Download .txt), `useCopyReport()` (Zwischenablage).
+
+### Ablauf Analyse
+
+1. `history.tsx` → `AnalysePanel` startet `POST /api/analyse` → sofort **202** mit `status: pending`.
+2. `runAnalysisInBackground()` in `server/routes.ts` baut Input, ruft Ollama, speichert in `analyses`, sendet Push.
+3. Client pollt `GET /api/analyse/latest` alle 3s solange pending.
+4. Export: `GET /api/export` → JSON `{ markdown }`.
+
+Die Historie bleibt als JSON-Snapshot in `workout_history.workoutData` – KI-Aufbereitung passiert erst beim Analysieren/Exportieren.
+
+## Tech-Stack
+
+| Schicht | Technologie |
+|---------|-------------|
+| Frontend | React 18, TypeScript, Vite 7, TanStack Query, Framer Motion |
+| UI | shadcn/ui (Radix), Tailwind CSS 3, Lucide Icons |
+| Backend | Express 5, TypeScript (tsx dev / esbuild prod) |
+| Datenbank | PostgreSQL + Drizzle ORM + drizzle-zod |
+| Lokale KI | Ollama (HTTP, kein npm-Paket) |
+| Push | web-push (VAPID), Service Worker in `client/public/sw.js` |
+| Build | Vite → `dist/public`, esbuild → `dist/index.cjs` |
+| Container | Docker multi-stage (`Dockerfile`, Node 20 alpine) |
+
+## Verzeichnisstruktur
+
+```
+/
+├── client/src/
+│   ├── pages/home.tsx, history.tsx (AnalysePanel + ReminderPanel), settings.tsx
+│   ├── hooks/use-analyse.ts, use-push-notifications.ts, use-exercises.ts, ...
+│   └── components/ui/          # shadcn
+├── server/
+│   ├── index.ts, routes.ts, storage.ts, db.ts
+│   ├── ollama.ts               # Lokales Ollama
+│   ├── report.ts               # Berichts-Generierung
+│   └── pushNotifications.ts    # Web-Push
+├── shared/
+│   ├── schema.ts               # Drizzle-Tabellen + Zod
+│   ├── constants.ts            # TARGET_SETS=3, TARGET_REPS=10
+│   └── routes.ts               # API-Contract
+├── .github/workflows/deploy.yml
+└── Dockerfile
+```
+
+Pfad-Aliase: `@/*` → `client/src/*`, `@shared/*` → `shared/*`
+
+## Datenmodell (`shared/schema.ts`)
+
+- **workout_splits**: id, name, order
+- **exercises**: id, name, splitId, weight, **category**, isCompleted, increaseNextTime, **sets** (JSON-Zahlen-Array, z.B. `"[10,10,7]"`), order
+- **workout_history**: id, splitId, completedAt, workoutData (JSON-Snapshot)
+- **analyses**: id, status (pending|done|error), summary, model, createdAt, finishedAt
+- **reminders**: id, remindAt, note, sentAt, createdAt
+- **push_subscriptions**: id, endpoint, p256dh, auth, createdAt
+
+Konstanten: `TARGET_SETS=3`, `TARGET_REPS=10` in `shared/constants.ts`.
+
+## API-Endpunkte (Auswahl)
+
+| Endpoint | Beschreibung |
+|----------|--------------|
+| CRUD `/api/splits`, `/api/exercises`, `/api/history` | Basis-CRUD |
+| `PATCH /api/exercises/:id` | Steiger-Erkennung: letzter Satz ≥ TARGET_REPS → increaseNextTime + Push |
+| `POST /api/workout/finish` | Historie speichern, isCompleted + sets zurücksetzen |
+| `POST /api/analyse` | Analyse starten (202, Hintergrund) |
+| `GET /api/analyse/latest` | Letzte Analyse |
+| `GET /api/export` | Markdown-Bericht für externe KI |
+| `GET/POST/DELETE /api/reminder` | Erinnerungen (Scheduler: setInterval 60s) |
+| `GET /api/push/vapid-public-key` | VAPID Public Key |
+| `POST /api/push/subscribe`, `/unsubscribe` | Push-Abo verwalten |
+
+## Zwei getrennte Datenbanken
+
+| Umgebung | Datenbank | Hinweis |
+|----------|-----------|---------|
+| Replit (Entwicklung) | Replit-eigene Postgres | Für lokales Entwickeln auf Replit |
+| Raspberry Pi (Produktion) | `postgresql://casaos:casaos@192.168.1.169:5432/postgres` | Eigene DB, getrennt von Replit |
+
+Bei frischer DB: `npm run db:push` (Drizzle Kit). Schema-Änderungen nie nur clientseitig – immer über Drizzle.
+
+## Deployment (nicht umbauen!)
+
+Pipeline: **Replit/GitHub → GitHub Actions → GHCR → Watchtower auf dem Pi**
+
+- Workflow: `.github/workflows/deploy.yml`
+- Runner: `ubuntu-24.04-arm` (nativer ARM64)
+- Buildx: `driver-opts: network=host`
+- Image: `ghcr.io/cedinho50/replit-gym-app:latest` (privat)
+- Watchtower zieht Updates automatisch auf dem Pi (Container `gym-app`)
+
+Dockerfile-Besonderheit (muss bleiben):
+```dockerfile
+sed -i s#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g package-lock.json
+```
+Replit-interne Registry-URLs in package-lock.json vor npm install ersetzen.
+
+Production: `CMD ["node", "dist/index.cjs"]`, `PORT=5000`, `NODE_ENV=production`.
+
+## Umgebungsvariablen
+
+| Variable | Zweck |
+|----------|-------|
+| `DATABASE_URL` | PostgreSQL-Verbindung (Pflicht) |
+| `OLLAMA_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS` | Lokales Ollama |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web-Push (optional, ohne Keys: Push still deaktiviert) |
+| `PORT` | Server-Port (Default 5000) |
+
+VAPID-Keys erzeugen: `npx web-push generate-vapid-keys`
+
+## Sprache & Schreibweise
+
+- UI und Kommentare: **Deutsch**
+- KI-Ausgabe und Berichte: **Schweizer Rechtschreibung** – kein Eszett (ß), stattdessen ss; Umlaute ä, ö, ü
+- Erklärungen in Code-Kommentaren sind bewusst **anfängerfreundlich** – so beibehalten
+
+## Design-Regeln
+
+- Strikt helles, minimalistisches Design (clean white) – kein Dark Mode
+- Mobile-first: `max-w-md mx-auto`, Bottom-Navigation
+- shadcn/ui-Komponenten wiederverwenden, nicht neu erfinden
+
+## Code-Konventionen
+
+1. **Shared-first**: Schema, Types, Zod in `shared/` – nicht duplizieren
+2. **Storage-Pattern**: DB-Zugriff nur über `server/storage.ts`
+3. **Minimale Diffs**: Bestehende Konventionen beibehalten
+4. **Keine Cloud-KI-Pakete** hinzufügen – Ollama bleibt der Weg
+5. **Keine Secrets committen** (.env lokal halten)
+
+## NPM-Skripte
+
+- `npm run dev` – Development (tsx + Vite HMR)
+- `npm run build` – Client + Server bündeln
+- `npm start` – Production-Server
+- `npm run check` – TypeScript-Prüfung
+- `npm run db:push` – Schema in DB pushen
