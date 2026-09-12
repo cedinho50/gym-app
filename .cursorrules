@@ -66,29 +66,28 @@ Cedric entwickelt fast ausschliesslich über den Agenten. Diese Regeln gelten f�
 ## Wichtig: Keine Cloud-KI in dieser App
 
 - **Keine** openai- oder @google/generative-ai-Pakete – bewusst so designed.
-- Die Auswertung macht **lokales Ollama** auf dem Raspberry per HTTP (`POST /api/generate`).
-- Erwähnung von openai/gemini in `script/build.ts` ist nur **esbuild-Allowlist** aus dem Replit-Template (toter Ballast).
-- **Nicht neu bauen** – vorhandenen Code in `server/ollama.ts`, `server/report.ts`, Hooks und Routes nutzen.
+- **Kein LLM** für die Vorberechnung (seit v1.0.1): faktische Auswertung deterministisch in `server/trainingStats.ts`.
+- `server/ollama.ts` ist Legacy (nicht mehr im Analyse-Pfad); Erwähnung von openai/gemini in `script/build.ts` = esbuild-Allowlist (toter Ballast).
 
-## KI-Architektur (zwei Stufen)
+## Berichts-Architektur (zwei Stufen)
 
-1. **Lokal (Ollama, llama3.2:1b):** Knappe Zusammenfassung der letzten Trainings.
-   - `server/ollama.ts` → `analyzeTraining()` ruft `{OLLAMA_URL}/api/generate` auf.
-   - Env: `OLLAMA_URL` (Default `http://192.168.1.169:11434`), `OLLAMA_MODEL` (Default `llama3.2:1b`), `OLLAMA_TIMEOUT_MS` (Default `240000`).
-   - Ausgabe: Schweizer Schreibweise (ß → ss).
+1. **Lokal (deterministisch auf dem Pi):** Faktische Vorberechnung ohne Interpretation.
+   - `server/trainingStats.ts` → `buildFactualPrecheck()`: Steigerung fällig, Trend letzter Satz, Frequenz je Muskelgruppe (7/14/28 Tage), Stillstand-Liste.
+   - Konstanten: `TARGET_SETS`, `TARGET_REPS`, `STAGNATION_THRESHOLD` in `shared/constants.ts`.
+   - Fehlende Wdh.-Daten → «keine Daten», nie erfinden.
 
 2. **Export für externe KI:** Ausführlicher Markdown-Bericht.
-   - `server/report.ts` → `buildOllamaInput()` (kompakt fürs lokale Modell), `buildMarkdownReport()` (Struktur, Frequenz, Ruhetage, Volumen, Verlauf pro Übung).
+   - `server/report.ts` → `buildMarkdownReport()` (Struktur, Frequenz, Ruhetage, Volumen, Verlauf pro Übung + optionaler Abschnitt «Faktische Vorberechnung»).
    - Client: `useExportReport()` (Download .txt), `useCopyReport()` (Zwischenablage).
 
-### Ablauf Analyse
+### Ablauf Auswertung
 
 1. `history.tsx` → `AnalysePanel` startet `POST /api/analyse` → sofort **202** mit `status: pending`.
-2. `runAnalysisInBackground()` in `server/routes.ts` baut Input, ruft Ollama, speichert in `analyses`, sendet Push.
+2. `runAnalysisInBackground()` in `server/routes.ts` ruft `buildFactualPrecheck()`, speichert in `analyses` (model: `deterministic-v1`), sendet Push.
 3. Client pollt `GET /api/analyse/latest` alle 3s solange pending.
 4. Export: `GET /api/export` → JSON `{ markdown }`.
 
-Die Historie bleibt als JSON-Snapshot in `workout_history.workoutData` – KI-Aufbereitung passiert erst beim Analysieren/Exportieren.
+Die Historie bleibt als JSON-Snapshot in `workout_history.workoutData` – Aufbereitung passiert erst beim Auswerten/Exportieren.
 
 ## Tech-Stack
 
@@ -98,7 +97,7 @@ Die Historie bleibt als JSON-Snapshot in `workout_history.workoutData` – KI-Au
 | UI | shadcn/ui (Radix), Tailwind CSS 3, Lucide Icons |
 | Backend | Express 5, TypeScript (tsx dev / esbuild prod) |
 | Datenbank | PostgreSQL + Drizzle ORM + drizzle-zod |
-| Lokale KI | Ollama (HTTP, kein npm-Paket) |
+| Lokale Auswertung | Deterministische Stats (`trainingStats.ts`, kein LLM) |
 | Push | web-push (VAPID), Service Worker in `client/public/sw.js` |
 | Build | Vite → `dist/public`, esbuild → `dist/index.cjs` |
 | Container | Docker multi-stage (`Dockerfile`, Node 20 alpine) |
@@ -113,8 +112,9 @@ Die Historie bleibt als JSON-Snapshot in `workout_history.workoutData` – KI-Au
 │   └── components/ui/          # shadcn
 ├── server/
 │   ├── index.ts, routes.ts, storage.ts, db.ts
-│   ├── ollama.ts               # Lokales Ollama
+│   ├── trainingStats.ts        # Faktische Vorberechnung
 │   ├── report.ts               # Berichts-Generierung
+│   ├── ollama.ts               # Legacy (nicht im Analyse-Pfad)
 │   └── pushNotifications.ts    # Web-Push
 ├── shared/
 │   ├── schema.ts               # Drizzle-Tabellen + Zod
@@ -183,7 +183,6 @@ Production: `CMD ["node", "dist/index.cjs"]`, `PORT=5000`, `NODE_ENV=production`
 | Variable | Zweck |
 |----------|-------|
 | `DATABASE_URL` | PostgreSQL-Verbindung (Pflicht) |
-| `OLLAMA_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_MS` | Lokales Ollama |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web-Push (optional, ohne Keys: Push still deaktiviert) |
 | `PORT` | Server-Port (Default 5000) |
 

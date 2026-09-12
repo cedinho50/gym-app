@@ -1,9 +1,8 @@
 // ------------------------------------------------------------------
-// Baut aus der Trainings-Historie zwei Dinge:
-//  1) einen kompakten Text als Eingabe fuer Ollama (klein halten!)
-//  2) einen ausfuehrlichen Bericht zum Export, so formuliert, dass er
-//     direkt an eine KI (z.B. Claude oder Gemini) weitergegeben werden
-//     kann, inkl. Struktur, Frequenz, Ruhetagen und Volumen.
+// Baut den ausfuehrlichen Export-Bericht (Markdown), so formuliert, dass er
+// direkt an eine externe KI (z.B. Claude oder Gemini) weitergegeben werden kann.
+// Enthaelt optional einen faktischen Vorberechnungs-Abschnitt (deterministisch,
+// siehe server/trainingStats.ts) statt einer interpretierenden LLM-Zusammenfassung.
 // Text in Schweizer Schreibweise (kein Eszett, stattdessen ss) mit Umlauten.
 // ------------------------------------------------------------------
 
@@ -76,27 +75,12 @@ function buildTimelines(history: WorkoutHistory[], splitMap: Record<number, stri
   return Array.from(byName.values());
 }
 
-// Kompakter Text fuer Ollama: pro Uebung die letzten bis zu 6 Trainings.
-export function buildOllamaInput(history: WorkoutHistory[], splits: WorkoutSplit[]): string {
-  const splitMap = Object.fromEntries(splits.map((s) => [s.id, s.name]));
-  const timelines = buildTimelines(history, splitMap);
-  if (timelines.length === 0) return "Keine Trainingsdaten vorhanden.";
-
-  const lines: string[] = [];
-  for (const t of timelines) {
-    const recent = t.entries.slice(-6);
-    const parts = recent.map((e) => `${fmtDate(e.date)}: ${e.weight || "?"}, Saetze ${setsLabel(e.sets)}`);
-    lines.push(`${t.name} -> ${parts.join(" | ")}`);
-  }
-  return lines.join("\n");
-}
-
 // Ausfuehrlicher Bericht zum Export (Umlaute, Schweizer Schreibweise).
 export function buildMarkdownReport(
   history: WorkoutHistory[],
   splits: WorkoutSplit[],
   exercises: Exercise[] = [],
-  ollamaSummary?: string,
+  factualPrecheck?: string,
 ): string {
   const splitMap = Object.fromEntries(splits.map((s) => [s.id, s.name]));
   const timelines = buildTimelines(history, splitMap);
@@ -226,11 +210,11 @@ export function buildMarkdownReport(
     out.push("");
   }
 
-  // ----- KI-Vorbewertung -----
-  if (ollamaSummary && ollamaSummary.trim()) {
-    out.push("## KI-Vorbewertung (lokal auf dem Raspberry, Ollama)");
+  // ----- Faktische Vorberechnung (deterministisch, kein LLM) -----
+  if (factualPrecheck && factualPrecheck.trim()) {
+    out.push("## Faktische Vorberechnung (lokal auf dem Raspberry)");
     out.push("");
-    out.push(ollamaSummary.trim());
+    out.push(factualPrecheck.trim());
     out.push("");
   }
 

@@ -3,24 +3,19 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { insertExerciseSchema, insertWorkoutSplitSchema, TARGET_REPS, TARGET_SETS } from "@shared/schema";
 import { z } from "zod";
-import { analyzeTraining, ollamaInfo } from "./ollama";
-import { buildOllamaInput, buildMarkdownReport } from "./report";
+import { buildMarkdownReport } from "./report";
+import { buildFactualPrecheck } from "./trainingStats";
 import { pushToAll, getVapidPublicKey } from "./pushNotifications";
 
-// Fuehrt eine KI-Analyse im Hintergrund aus und schickt danach eine Push.
+// Berechnet die faktische Vorberechnung im Hintergrund und schickt danach eine Push.
 async function runAnalysisInBackground(analysisId: number) {
   try {
     const [history, splits] = await Promise.all([storage.getHistory(), storage.getSplits()]);
-    if (history.length === 0) {
-      await storage.finishAnalysis(analysisId, "done", "Noch keine abgeschlossenen Trainings vorhanden. Absolviere zuerst ein Training.", ollamaInfo().model);
-      return;
-    }
-    const input = buildOllamaInput(history, splits);
-    const summary = await analyzeTraining(input);
-    await storage.finishAnalysis(analysisId, "done", summary, ollamaInfo().model);
+    const summary = buildFactualPrecheck(history, splits);
+    await storage.finishAnalysis(analysisId, "done", summary, "deterministic-v1");
     pushToAll({
-      title: "🧠 KI-Analyse fertig",
-      body: "Dein Trainingsbericht steht bereit. Tippe zum Ansehen.",
+      title: "📊 Vorberechnung fertig",
+      body: "Die faktische Auswertung steht bereit. Tippe zum Ansehen.",
       url: "/",
       tag: "analyse-fertig",
     }).catch((err) => console.error("[analyse] Push-Fehler:", err?.message));
@@ -29,12 +24,12 @@ async function runAnalysisInBackground(analysisId: number) {
     await storage.finishAnalysis(
       analysisId,
       "error",
-      "KI-Analyse nicht moeglich. Laeuft Ollama auf dem Raspberry? (" + (err?.message || "unbekannter Fehler") + ")",
-      ollamaInfo().model,
+      "Vorberechnung fehlgeschlagen (" + (err?.message || "unbekannter Fehler") + ")",
+      "deterministic-v1",
     );
     pushToAll({
-      title: "KI-Analyse fehlgeschlagen",
-      body: "Die Analyse konnte nicht erstellt werden. Bitte spaeter erneut versuchen.",
+      title: "Vorberechnung fehlgeschlagen",
+      body: "Die Auswertung konnte nicht erstellt werden. Bitte spaeter erneut versuchen.",
       url: "/",
       tag: "analyse-fehler",
     }).catch(() => {});
@@ -215,8 +210,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         storage.getExercises(),
       ]);
       const latest = await storage.getLatestAnalysis();
-      const ollamaSummary = latest && latest.status === "done" ? latest.summary : undefined;
-      const markdown = buildMarkdownReport(history, splits, exercises, ollamaSummary);
+      const factualPrecheck = latest && latest.status === "done" ? latest.summary : undefined;
+      const markdown = buildMarkdownReport(history, splits, exercises, factualPrecheck);
       res.json({ markdown });
     } catch (err: any) {
       console.error("[export] Fehler:", err?.message);

@@ -95,10 +95,10 @@ function AnalysePanel() {
     <div className="rounded-3xl border border-gray-100 bg-white p-5">
       <div className="flex items-center gap-2 mb-1">
         <Sparkles className="w-4 h-4 text-blue-600" />
-        <h2 className="text-base font-semibold text-gray-900">KI-Analyse</h2>
+        <h2 className="text-base font-semibold text-gray-900">Datenauswertung</h2>
       </div>
       <p className="text-sm text-gray-400 mb-4">
-        Ollama auf dem Raspberry wertet deinen Verlauf aus. Mit "Kopieren" oder "Export" gibst du den ausführlichen Bericht an Claude oder Gemini weiter.
+        Der Raspberry berechnet Fakten aus deinem Verlauf (Steigerung, Trend, Frequenz, Stillstand). Mit «Kopieren» oder «Export» gibst du den ausführlichen Bericht an Claude oder Gemini weiter.
       </p>
 
       <Button
@@ -109,7 +109,7 @@ function AnalysePanel() {
         {running ? (
           <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analysiere...</>
         ) : (
-          <><Sparkles className="w-4 h-4 mr-2" /> Analysieren</>
+          <><Sparkles className="w-4 h-4 mr-2" /> Auswerten</>
         )}
       </Button>
 
@@ -142,7 +142,7 @@ function AnalysePanel() {
       {running && (
         <div className="mt-4 flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-2xl p-3">
           <Loader2 className="w-4 h-4 mt-0.5 animate-spin flex-shrink-0" />
-          <span>Die Analyse läuft im Hintergrund. Du kannst die App schliessen, du bekommst eine Push, sobald der Bericht bereit ist.</span>
+          <span>Die Auswertung läuft im Hintergrund. Du kannst die App schliessen, du bekommst eine Push, sobald die Vorberechnung bereit ist.</span>
         </div>
       )}
 
@@ -160,7 +160,7 @@ function AnalysePanel() {
       )}
 
       {!running && latest?.status === "error" && (
-        <p className="mt-4 text-sm text-red-500">{latest.summary || "KI-Analyse fehlgeschlagen"}</p>
+        <p className="mt-4 text-sm text-red-500">{latest.summary || "Auswertung fehlgeschlagen"}</p>
       )}
       {start.isError && (
         <p className="mt-4 text-sm text-red-500">{start.error?.message}</p>

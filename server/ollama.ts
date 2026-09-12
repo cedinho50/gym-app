@@ -1,9 +1,8 @@
 // ------------------------------------------------------------------
-// Ollama-Anbindung fuer die Trainings-Analyse.
-// Gleiches Muster wie im Projekt "Betriebslage": lokaler Ollama-Server
-// auf dem Raspberry, Aufruf per HTTP POST auf /api/generate.
-// Der Pi macht die rechenintensive Zusammenfassung, damit die kleine
-// Hardware entlastet bleibt.
+// Ollama-Anbindung (Legacy). Die faktische Vorberechnung laeuft seit v1.0.1
+// deterministisch in server/trainingStats.ts – ohne LLM, damit keine
+// erfundenen Fortschritte in den Bericht gelangen.
+// Dieses Modul bleibt fuer spaetere optionale Nutzung erhalten.
 // ------------------------------------------------------------------
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://192.168.1.169:11434";

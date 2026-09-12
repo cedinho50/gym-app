@@ -6,3 +6,7 @@
 // ist eine Gewichtserhoehung faellig.
 export const TARGET_SETS = 3;
 export const TARGET_REPS = 10;
+
+// Übung gilt als im Stillstand, wenn mehr als so viele aufeinanderfolgende
+// Trainings weder Gewicht noch letzter Satz (Wdh.) gestiegen sind.
+export const STAGNATION_THRESHOLD = 3;
